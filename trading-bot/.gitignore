@@ -3,6 +3,10 @@
 .env.local
 *.pem
 
+# Large / generated data (GitHub 100MB limit)
+signal_dataset.csv
+**/signal_dataset.csv
+
 # Python
 __pycache__/
 *.py[cod]
