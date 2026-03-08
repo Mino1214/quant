@@ -47,7 +47,7 @@ def main() -> None:
         import os
         os.environ["RUN_ENGINE"] = "1"
         import uvicorn
-        uvicorn.run("api.server:app", host="0.0.0.0", port=8000, reload=False)
+        uvicorn.run("api.server:app", host="0.0.0.0", port=9009, reload=False)
         return
 
     if mode == "backtest":

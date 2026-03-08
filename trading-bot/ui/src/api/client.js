@@ -1,5 +1,5 @@
-// 개발 시 기본으로 8000 직접 호출 (프록시 없이 동작). VITE_API_URL으로 변경 가능.
-const raw = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:8000' : '');
+// 개발 시 기본으로 9009 직접 호출 (프록시 없이 동작). VITE_API_URL으로 변경 가능.
+const raw = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:9009' : '');
 const BASE = raw ? String(raw).replace(/\/+$/, '') : '/api';
 
 function apiUrl(path) {

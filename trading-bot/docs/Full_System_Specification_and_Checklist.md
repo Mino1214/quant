@@ -402,7 +402,7 @@ Run from project root: `cd /path/to/trading-bot`. Use `python -m` or `PYTHONPATH
 
 | 목적 | 실행 방법 |
 |------|-----------|
-| **Paper 거래 + 실시간 모니터링** | `cd trading-bot && python main.py --mode paper --with-api` → 엔진과 API가 한 프로세스로 동작. 브라우저에서 `http://localhost:8000` (또는 UI 프록시 3000) 접속. |
+| **Paper 거래 + 실시간 모니터링** | `cd trading-bot && python main.py --mode paper --with-api` → 엔진과 API가 한 프로세스로 동작. 브라우저에서 `http://localhost:9009` (또는 UI 프록시 3000) 접속. |
 | **Paper만 (로그만 보기)** | `cd trading-bot && python main.py --mode paper` → 터미널 로그로 1m 봉 수신·전략·진입/청산만 확인. |
 
 처음에는 **Paper + API**로 띄워 두고, API 엔드포인트로 상태를 보는 흐름을 추천한다.
