@@ -215,7 +215,7 @@ def build_dataset(
             candidate, ctx, approval_settings, strat_settings, risk_settings,
         )
         regime_str = regime_result.regime.value if regime_result is not None else "UNKNOWN"
-        features = extract_feature_values(window_1m, candles_5m, strat_settings)
+        features = extract_feature_values(window_1m, candles_5m, strat_settings, candles_15m=candles_15m)
 
         # Trend filter: LONG only if ema20>ema50 and ema50_slope>0, SHORT only if opposite
         if get_use_trend_filter(cfg):

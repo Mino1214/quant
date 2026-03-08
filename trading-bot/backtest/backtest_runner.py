@@ -234,7 +234,7 @@ async def run_backtest(
             candidate, ctx, approval_settings, strat_settings, risk_settings,
         )
         regime_str = regime_result.regime.value if regime_result is not None else "UNKNOWN"
-        features = extract_feature_values(window_1m, candles_5m, strat_settings)
+        features = extract_feature_values(window_1m, candles_5m, strat_settings, candles_15m=candles_15m)
         if len(candles_15m) >= 50:
             try:
                 from features.multi_tf_feature_builder import build_multi_tf_features

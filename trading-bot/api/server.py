@@ -183,7 +183,7 @@ app.add_middleware(
 
 @app.get("/")
 def root() -> dict:
-    """서버 확인용: 이게 보이면 이 앱이 8000에서 동작 중입니다."""
+    """서버 확인용: 이게 보이면 이 앱이 9009에서 동작 중입니다."""
     return {
         "service": "MTF Scalping Bot API",
         "version": "1.0",

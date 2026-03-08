@@ -78,7 +78,7 @@ python main.py --mode paper
 
 # Paper + API 한 프로세스: UI에서 실시간 차트 요약·전략 상태·포지션·오늘 거래 요약 표시
 python main.py --mode paper --with-api
-# 이후 브라우저에서 http://localhost:8000 또는 UI 프록시 http://localhost:3000
+# 이후 브라우저에서 http://localhost:9009 또는 UI 프록시 http://localhost:3000
 
 # Backtest: CSV 또는 DB 테이블(btc1m)
 python main.py --mode backtest --data path/to/1m.csv
@@ -86,8 +86,8 @@ python main.py --mode backtest --from-db
 # Or: python -m backtest.backtest_runner --from-db --table btc1m --limit 50000 --symbol BTCUSDT
 
 # API (status, config, trades, pnl)
-uvicorn api.server:app --host 0.0.0.0 --port 8000
-# From project root: PYTHONPATH=. uvicorn api.server:app --port 8000
+uvicorn api.server:app --host 0.0.0.0 --port 9009
+# From project root: PYTHONPATH=. uvicorn api.server:app --port 9009
 ```
 
 ## Config
@@ -118,15 +118,15 @@ uvicorn api.server:app --host 0.0.0.0 --port 8000
 설정 → 실시간 모니터링 → 가상/실제매매를 위한 6개 화면 (Dashboard, Strategy, Signals, Positions, Trades, Settings).
 
 ```bash
-# API 서버 먼저 실행 (터미널 1) — 포트 8000
-cd trading-bot && PYTHONPATH=. uvicorn api.server:app --port 8000
+# API 서버 먼저 실행 (터미널 1) — 포트 9009
+cd trading-bot && PYTHONPATH=. uvicorn api.server:app --port 9009
 
 # UI 개발 서버 (터미널 2) — 포트 3000
 cd trading-bot/ui && npm install && npm run dev
 # 브라우저 http://localhost:3000
 
-# 포트 정리: 3000 = 웹(UI), 8000 = API. UI는 /api 요청을 Vite가 8000으로 프록시함.
-# API를 8000으로 직접 쓰고 싶으면: ui/.env 에 VITE_API_URL=http://localhost:8000
+# 포트 정리: 3000 = 웹(UI), 9009 = API. UI는 /api 요청을 Vite가 9009로 프록시함.
+# API를 9009로 직접 쓰고 싶으면: ui/.env 에 VITE_API_URL=http://localhost:9009
 ```
 
 - **Dashboard**: 모드, 심볼, 오늘 손익, 포지션, 전략 상태(15m/5m/1m)

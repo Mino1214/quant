@@ -279,7 +279,7 @@ class TradingEngine:
             entry, candidate.direction, candles_1m, self.risk_settings
         )
         regime_str = regime_result.regime.value if regime_result is not None else "UNKNOWN"
-        features = extract_feature_values(candles_1m, candles_5m, self.strategy_settings)
+        features = extract_feature_values(candles_1m, candles_5m, self.strategy_settings, candles_15m=candles_15m)
         if len(candles_15m) >= 50:
             try:
                 from features.multi_tf_feature_builder import build_multi_tf_features

@@ -51,7 +51,7 @@ export default function Dashboard() {
 
       {!hasEngine && (
         <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800">
-          <strong>전략 상태·차트 요약이 "—"인 이유</strong> API 서버가 엔진과 같은 프로세스로 떠 있지 않아서입니다. 아래처럼 <strong>한 번만</strong> 실행하세요 (8000 포트 사용 중이면 먼저 <code className="font-mono text-xs">lsof -i :8000</code> 후 <code className="font-mono text-xs">kill -9 &lt;PID&gt;</code>).
+          <strong>전략 상태·차트 요약이 "—"인 이유</strong> API 서버가 엔진과 같은 프로세스로 떠 있지 않아서입니다. 아래처럼 <strong>한 번만</strong> 실행하세요 (9009 포트 사용 중이면 먼저 <code className="font-mono text-xs">lsof -i :9009</code> 후 <code className="font-mono text-xs">kill -9 &lt;PID&gt;</code>).
           <code className="block mt-2 font-mono text-xs bg-white/60 p-2 rounded whitespace-pre">
             {`cd /Users/myno/Desktop/quant/trading-bot\nRUN_ENGINE=1 python3 run_api.py`}
           </code>
