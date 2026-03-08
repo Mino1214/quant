@@ -14,8 +14,16 @@ venv/
 ui/node_modules/
 ui/dist/
 
-# IDE
+# IDE / OS
 .idea/
 .vscode/
 *.swp
 .DS_Store
+
+# ML artifacts (optional – remove if you want to track trained models)
+ml/models/*.joblib
+ml/models/*.json
+
+# Analysis output (optional)
+# analysis/output/*.png
+# analysis/output/*.csv
