@@ -56,6 +56,7 @@ def _migrate_candidate_signals() -> None:
     """Add missing columns to candidate_signals to match CandidateSignalModel (기존 DB 호환)."""
     columns = [
         ("`time`", "DATETIME NULL"),
+        ("timestamp", "DATETIME NULL"),  # legacy: time과 동일 값
         ("close", "DECIMAL(20,8) NULL"),
         ("side", "VARCHAR(8) NULL"),
         ("regime", "VARCHAR(32) NULL"),

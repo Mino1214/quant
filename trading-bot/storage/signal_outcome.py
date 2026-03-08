@@ -8,13 +8,26 @@ from typing import List, Optional
 from core.models import Candle, Direction, SignalOutcome
 
 
+# Cap R to avoid explosion when stop distance is tiny (e.g. numerical error or bad data)
+R_CAP = 20.0
+
+
 def _r_at_price(entry: float, exit_price: float, risk: float, direction: Direction) -> float:
-    """Return R for a single exit price. risk = abs(entry - stop_loss)."""
+    """
+    Return R for a single exit price. risk = abs(entry - stop_loss).
+    If risk is too small (< entry * 1e-5), R is capped to avoid hundreds/thousands.
+    All R values are capped to [-R_CAP, R_CAP] for scan sanity.
+    """
     if risk <= 0:
         return 0.0
+    min_risk = abs(entry) * 1e-5
+    if risk < min_risk:
+        risk = min_risk
     if direction == Direction.LONG:
-        return (exit_price - entry) / risk
-    return (entry - exit_price) / risk
+        r = (exit_price - entry) / risk
+    else:
+        r = (entry - exit_price) / risk
+    return max(-R_CAP, min(R_CAP, r))
 
 
 def compute_outcome_for_signal(

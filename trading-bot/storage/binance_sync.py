@@ -177,10 +177,10 @@ def backfill_1m(
 def sync_binance_to_db(symbol: Optional[str] = None) -> None:
     """
     Binance Futures에서 1m, 5m, 15m을 가져와 DB(btc1m, btc5m, btc15m)에 최신화.
-    config에서 symbol 사용. DB 연결은 get_database_url() 사용.
+    DB에 있는 마지막 봉 이후 ~ 현재까지만 채움(갭 채우기). 서버 재시작 시 한 번 돌며, 실시간 저장은 WS 수신 시 엔진에서 처리.
     """
     symbol = symbol or load_config().get("symbol", "BTCUSDT")
-    # pymysql raw connection for executemany
+    logger.info("Binance sync (gap fill): DB 마지막 봉 이후 ~ 현재까지 채움. 실시간 1m/5m/15m은 WS 수신 시 저장됨.")
     raw = engine.raw_connection()
     try:
         for interval in INTERVALS:

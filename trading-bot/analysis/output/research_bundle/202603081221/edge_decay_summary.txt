@@ -1,0 +1,31 @@
+Edge decay / holding horizon summary
+====================================
+
+Overall (all candidates):
+  Horizon 5: trades=15000 winrate=46.8% avg_R=0.010 PF=1.02
+  Horizon 10: trades=15000 winrate=45.1% avg_R=-0.047 PF=0.94
+  Horizon 20: trades=15000 winrate=44.0% avg_R=-0.042 PF=0.96
+  Horizon 30: trades=15000 winrate=43.4% avg_R=-0.036 PF=0.97
+
+With trend filter (long: ema20>ema50 & slope>0, short: opposite):
+  Horizon 5: trades=0 winrate=0.0% avg_R=0.000 PF=0.00
+  Horizon 10: trades=0 winrate=0.0% avg_R=0.000 PF=0.00
+  Horizon 20: trades=0 winrate=0.0% avg_R=0.000 PF=0.00
+  Horizon 30: trades=0 winrate=0.0% avg_R=0.000 PF=0.00
+
+By regime:
+  TRENDING_UP:
+    Horizon 5: trades=8772 avg_R=0.035
+    Horizon 10: trades=8772 avg_R=-0.004
+    Horizon 20: trades=8772 avg_R=-0.003
+    Horizon 30: trades=8772 avg_R=0.015
+  TRENDING_DOWN:
+    Horizon 5: trades=6228 avg_R=-0.025
+    Horizon 10: trades=6228 avg_R=-0.107
+    Horizon 20: trades=6228 avg_R=-0.097
+    Horizon 30: trades=6228 avg_R=-0.107
+  RANGING:
+    Horizon 5: trades=0 avg_R=0.000
+    Horizon 10: trades=0 avg_R=0.000
+    Horizon 20: trades=0 avg_R=0.000
+    Horizon 30: trades=0 avg_R=0.000

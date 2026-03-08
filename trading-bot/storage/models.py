@@ -49,7 +49,8 @@ class CandidateSignalModel(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     symbol = Column(String(32), nullable=False, index=True)
-    time = Column(DateTime, nullable=False, index=True)  # bar timestamp
+    time = Column(DateTime, nullable=False, index=True)  # bar timestamp (주 사용 컬럼)
+    timestamp = Column("timestamp", DateTime, nullable=True, index=True, quote=True)  # MySQL 예약어 → 백틱으로 저장
     close = Column(Float, nullable=False)
     side = Column(String(8), nullable=False)  # long, short
     regime = Column(String(32), nullable=True)

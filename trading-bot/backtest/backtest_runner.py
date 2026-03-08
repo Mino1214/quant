@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import List, Optional
 
 from core.models import BlockedCandidateLog, Candle, CandidateSignalRecord, Direction, Timeframe, TradeRecord
-from config.loader import load_config, get_approval_settings, get_capital_allocation_settings, get_kelly_settings, get_leverage_settings, get_risk_settings, get_strategy_settings, get_regime_settings
+from config.loader import load_config, get_approval_settings, get_capital_allocation_settings, get_kelly_settings, get_leverage_settings, get_risk_settings, get_strategy_settings, get_regime_settings, get_use_trend_filter
 from strategy.mtf_ema_pullback import evaluate_candidate
 from strategy.filters.market_regime import MarketRegimeFilter
 from strategy.approval_engine import ApprovalContext, score as approval_score
@@ -252,6 +252,13 @@ async def run_backtest(
             )
         except Exception:
             pass
+        # Trend filter: LONG only if ema20>ema50 and ema50_slope>0, SHORT only if opposite
+        if get_use_trend_filter(cfg):
+            bias = float(features.get("trend_bias", 0) or 0)
+            if candidate.direction == Direction.LONG and bias < 0.5:
+                continue
+            if candidate.direction == Direction.SHORT and bias > -0.5:
+                continue
         if not result.allowed:
             log_blocked_candidate(BlockedCandidateLog(
                 symbol=symbol,

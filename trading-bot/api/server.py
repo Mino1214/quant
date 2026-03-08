@@ -16,9 +16,10 @@ from typing import Any
 
 from fastapi import Body, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-from config.loader import load_config, get_approval_settings, get_capital_allocation_settings, get_kelly_settings, get_leverage_settings, get_ml_settings, get_risk_settings, get_strategy_settings, get_regime_settings
+from config.loader import load_config, get_approval_settings, get_capital_allocation_settings, get_kelly_settings, get_leverage_settings, get_ml_settings, get_risk_settings, get_strategy_settings, get_regime_settings, get_use_trend_filter
 from core.engine import TradingEngine
 from core.models import Candle, CandidateSignalRecord, Direction, Timeframe
 from core.state import EngineState
@@ -66,6 +67,7 @@ async def lifespan(app: FastAPI):
             capital_allocation_settings=get_capital_allocation_settings(config),
             kelly_settings=get_kelly_settings(config),
             leverage_settings=get_leverage_settings(config),
+            use_trend_filter=get_use_trend_filter(config),
         )
         app.state.engine = engine
         app.state.broker = broker
@@ -79,6 +81,16 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             import logging as _log
             _log.getLogger("api.server").warning("Binance sync at startup: %s", e)
+
+        # 0-1) 1번에서 동기화된 1m 데이터 중 candidate_signals 없는 구간만 후보 생성 + signal_outcomes 저장
+        try:
+            from scripts.build_signal_dataset import sync_recent_from_db
+            logged, skipped = await asyncio.to_thread(sync_recent_from_db, symbol, "btc1m", 5000)
+            import logging as _log
+            _log.getLogger("api.server").info("Sync candidates+outcomes: logged=%d skipped=%d", logged, skipped)
+        except Exception as e:
+            import logging as _log
+            _log.getLogger("api.server").warning("Sync candidates+outcomes at startup: %s", e)
 
         # 1) DB에서 있는 만큼 로드 (symbol 필터)
         did_seed = False
@@ -403,6 +415,145 @@ def test_db() -> dict:
             db.close()
     except Exception as e:
         return {"ok": False, "error": str(e)}
+
+
+# --- Research: 리서치 실행 + 결과물 목록/파일 서빙 ---
+RESEARCH_OUTPUT_DIR = Path(__file__).resolve().parent.parent / "analysis" / "output"
+
+
+def _run_research_pipeline(skip_sync: bool = True, skip_build: bool = False, skip_outcomes: bool = False,
+                           skip_stability: bool = False, skip_walk_forward: bool = True,
+                           skip_ml: bool = False, skip_online_ml: bool = True) -> dict:
+    """동기 함수: research_pipeline 실행. 스킵 옵션으로 빠른 리서치 가능."""
+    from scheduler.research_pipeline import run_pipeline
+    try:
+        run_pipeline(
+            symbol="BTCUSDT",
+            output_dir=str(RESEARCH_OUTPUT_DIR),
+            skip_sync=skip_sync,
+            skip_build=skip_build,
+            skip_outcomes=skip_outcomes,
+            skip_stability=skip_stability,
+            skip_walk_forward=skip_walk_forward,
+            skip_ml=skip_ml,
+            skip_online_ml=skip_online_ml,
+        )
+        return {"ok": True, "message": "리서치 파이프라인 완료"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/research/run")
+async def research_run(
+    skip_sync: bool = True,
+    skip_stability: bool = False,
+    skip_walk_forward: bool = True,
+    skip_ml: bool = False,
+    skip_online_ml: bool = True,
+) -> dict:
+    """
+    리서치 파이프라인 실행 (기본: sync 제외, stability 포함, walk_forward/ml/online_ml 제외로 빠르게).
+    백그라운드 스레드에서 실행 후 완료 시 결과 반환. 오래 걸릴 수 있음.
+    """
+    result = await asyncio.to_thread(
+        _run_research_pipeline,
+        skip_sync=skip_sync,
+        skip_build=False,
+        skip_outcomes=False,
+        skip_stability=skip_stability,
+        skip_walk_forward=skip_walk_forward,
+        skip_ml=skip_ml,
+        skip_online_ml=skip_online_ml,
+    )
+    return result
+
+
+def _research_output_files() -> list:
+    """List files under analysis/output: run folders (YYYYMMDDHHmm) and research_bundle/<run_id>."""
+    if not RESEARCH_OUTPUT_DIR.exists():
+        return []
+    out = []
+
+    def add_file(file_path: Path, rel_path: str, run_label: str) -> None:
+        low = file_path.name.lower()
+        if low.endswith((".png", ".jpg", ".jpeg", ".gif", ".webp")):
+            kind = "image"
+        elif low.endswith(".csv"):
+            kind = "csv"
+        elif low.endswith(".json"):
+            kind = "json"
+        elif low.endswith((".txt", ".md")):
+            kind = "text"
+        elif low.endswith(".html"):
+            kind = "file"
+        else:
+            kind = "file"
+        out.append({"name": file_path.name, "type": kind, "path": rel_path, "run": run_label})
+
+    for p in sorted(RESEARCH_OUTPUT_DIR.iterdir(), reverse=True):
+        if p.is_dir():
+            if p.name == "research_bundle":
+                for sub in sorted(p.iterdir(), reverse=True):
+                    if sub.is_dir():
+                        run_label = f"bundle/{sub.name}"
+                        for q in sorted(sub.iterdir()):
+                            if q.is_file():
+                                rel = f"{p.name}/{sub.name}/{q.name}"
+                                add_file(q, rel, run_label)
+                    elif sub.is_file():
+                        add_file(sub, f"{p.name}/{sub.name}", p.name)
+            else:
+                run_label = p.name
+                for q in sorted(p.iterdir()):
+                    if q.is_file():
+                        rel = f"{p.name}/{q.name}"
+                        add_file(q, rel, run_label)
+        elif p.is_file():
+            name = p.name
+            low = name.lower()
+            if low.endswith((".png", ".jpg", ".jpeg", ".gif", ".webp")):
+                kind = "image"
+            elif low.endswith(".csv"):
+                kind = "csv"
+            elif low.endswith(".json"):
+                kind = "json"
+            elif low.endswith((".txt", ".md")):
+                kind = "text"
+            else:
+                kind = "file"
+            out.append({"name": name, "type": kind, "path": name, "run": None})
+    return out
+
+
+@app.get("/research/outputs")
+def research_outputs() -> dict:
+    """analysis/output 내 파일 목록 (타임스탬프 폴더 포함). type: image | csv | json | text. path로 다운로드."""
+    files = _research_output_files()
+    return {"files": files}
+
+
+@app.get("/research/output/{file_path:path}")
+def research_output_file(file_path: str):
+    """결과물 파일 서빙. analysis/output 하위만 허용 (예: 202603081606/parameter_scan_results.csv)."""
+    if not file_path or ".." in file_path:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail="Invalid path")
+    path = (RESEARCH_OUTPUT_DIR / file_path).resolve()
+    if not path.is_file() or not str(path).startswith(str(RESEARCH_OUTPUT_DIR.resolve())):
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="File not found")
+    media = "application/octet-stream"
+    if file_path.lower().endswith(".png"):
+        media = "image/png"
+    elif file_path.lower().endswith((".jpg", ".jpeg")):
+        media = "image/jpeg"
+    elif file_path.lower().endswith(".json"):
+        media = "application/json"
+    elif file_path.lower().endswith(".csv"):
+        media = "text/csv"
+    elif file_path.lower().endswith(".txt"):
+        media = "text/plain"
+    return FileResponse(path, media_type=media)
 
 
 @app.post("/config/test-binance")

@@ -6,6 +6,7 @@ import Backtest from './pages/Backtest';
 import Signals from './pages/Signals';
 import Positions from './pages/Positions';
 import Trades from './pages/Trades';
+import Research from './pages/Research';
 import Settings from './pages/Settings';
 
 export default function App() {
@@ -18,6 +19,7 @@ export default function App() {
         <Route path="signals" element={<Signals />} />
         <Route path="positions" element={<Positions />} />
         <Route path="trades" element={<Trades />} />
+        <Route path="research" element={<Research />} />
         <Route path="settings" element={<Settings />} />
       </Route>
     </Routes>

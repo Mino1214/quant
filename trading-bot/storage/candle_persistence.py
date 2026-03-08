@@ -54,6 +54,7 @@ def _insert_candle(table: str, c: Candle, symbol: str, interval_ms: int) -> None
         with engine.connect() as conn:
             conn.execute(text(sql), params)
             conn.commit()
+        logger.debug("Saved %s to DB openTime=%s", table, open_ms)
     except Exception as e:
         logger.warning("Save candle %s (openTime=%s): %s", table, open_ms, e)
 

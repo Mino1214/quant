@@ -8,6 +8,7 @@ const nav = [
   { to: '/signals', label: 'Signals' },
   { to: '/positions', label: 'Positions' },
   { to: '/trades', label: 'Trades' },
+  { to: '/research', label: '리서치' },
   { to: '/settings', label: 'Settings' },
 ];
 

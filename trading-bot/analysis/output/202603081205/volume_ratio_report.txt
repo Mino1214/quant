@@ -1,0 +1,21 @@
+Volume ratio distribution report
+==================================================
+Total rows with volume_ratio: 28794
+
+Quantiles (%)
+------------------------------
+  10%: 1.2784
+  25%: 1.4265
+  50%: 1.7978
+  75%: 2.6687
+  90%: 4.4494
+
+Surviving trade counts (rows with R_return/future_r_30 and volume_ratio >= threshold)
+------------------------------
+  volume_ratio >= 0.8: 28794 trades
+  volume_ratio >= 1.0: 28794 trades
+  volume_ratio >= 1.2: 28794 trades
+  volume_ratio >= 1.4: 22307 trades
+  volume_ratio >= 1.6: 17745 trades
+
+If surviving counts are identical across thresholds, volume_ratio may be missing or constant in dataset.

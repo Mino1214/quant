@@ -5,6 +5,7 @@ import json
 from datetime import date, datetime
 from typing import List, Optional
 
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from core.models import BlockedCandidateLog, CandidateSignalRecord, SignalOutcome, TradeRecord
@@ -117,9 +118,14 @@ def create_candidate_signal(db: Session, record: CandidateSignalRecord) -> Candi
             feature_ext_json = json.dumps(record.feature_values)
         except (TypeError, ValueError):
             pass
+    # time + timestamp(legacy) 동일 값. MySQL DATETIME은 timezone-naive 권장
+    ts = record.timestamp
+    if ts is not None and hasattr(ts, "replace"):
+        ts = ts.replace(tzinfo=None) if getattr(ts, "tzinfo", None) else ts
     row = CandidateSignalModel(
         symbol=record.symbol or "",
-        time=record.timestamp,
+        time=ts,
+        timestamp=ts,
         close=record.entry_price,
         side=side,
         regime=record.regime,
@@ -134,6 +140,13 @@ def create_candidate_signal(db: Session, record: CandidateSignalRecord) -> Candi
         feature_values_ext=feature_ext_json,
     )
     db.add(row)
+    db.flush()
+    # MySQL 예약어 `timestamp` 컬럼: INSERT 후 동일 행에 time → timestamp 복사 (비어 있으면 확실히 채움)
+    if ts is not None:
+        try:
+            db.execute(text("UPDATE candidate_signals SET `timestamp` = :ts WHERE id = :id"), {"ts": ts, "id": row.id})
+        except Exception:
+            pass
     db.commit()
     db.refresh(row)
     return row
@@ -179,16 +192,18 @@ def create_parameter_scan_result(db: Session, row: dict) -> ParameterScanResultM
 
 
 def get_candidate_signals_without_outcome(db: Session, symbol: Optional[str] = None, limit: int = 500) -> List[CandidateSignalModel]:
-    """Return candidate_signals that do not yet have a signal_outcomes row."""
+    """Return candidate_signals that do not yet have a signal_outcomes row. Time-ordered (worker 병렬 삽입 대비)."""
     subq = db.query(SignalOutcomeModel.candidate_signal_id).distinct()
     q = db.query(CandidateSignalModel).filter(~CandidateSignalModel.id.in_(subq))
     if symbol:
         q = q.filter(CandidateSignalModel.symbol == symbol)
-    return q.order_by(CandidateSignalModel.time.asc()).limit(limit).all()
+    return q.order_by(CandidateSignalModel.time.asc(), CandidateSignalModel.id.asc()).limit(limit).all()
 
 
 def get_candidate_signals_with_outcomes(db: Session, symbol: Optional[str] = None, limit: int = 10000) -> List[dict]:
     """Return joined candidate_signals + signal_outcomes as list of dicts for stability map / ML.
+    항상 시간순 정렬(time ASC, id ASC). Worker 병렬 삽입으로 id가 시간순이 아니어도 안전.
+    리서치/스캔/volume report/ML 등 DB에서 시그널 불러올 때 이 함수만 사용하면 됨.
     Merges feature_values_ext (JSON) into each row when present."""
     q = (
         db.query(CandidateSignalModel, SignalOutcomeModel)
@@ -196,7 +211,8 @@ def get_candidate_signals_with_outcomes(db: Session, symbol: Optional[str] = Non
     )
     if symbol:
         q = q.filter(CandidateSignalModel.symbol == symbol)
-    rows = q.order_by(CandidateSignalModel.time.asc()).limit(limit).all()
+    # Worker 병렬 삽입 시 id 순서가 시간 순이 아닐 수 있음 → 항상 시간 기준 정렬
+    rows = q.order_by(CandidateSignalModel.time.asc(), CandidateSignalModel.id.asc()).limit(limit).all()
     out = []
     for c, o in rows:
         row = {
@@ -212,6 +228,9 @@ def get_candidate_signals_with_outcomes(db: Session, symbol: Optional[str] = Non
             "rsi_5m": c.rsi or 0,
             "trade_outcome": c.trade_outcome,
             "R_return": o.future_r_30,
+            "future_r_5": o.future_r_5,
+            "future_r_10": o.future_r_10,
+            "future_r_20": o.future_r_20,
             "future_r_30": o.future_r_30,
         }
         if getattr(c, "feature_values_ext", None) and c.feature_values_ext:

@@ -3,7 +3,7 @@
 import argparse
 import logging
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -26,7 +26,8 @@ def step_build_dataset(symbol="BTCUSDT", table="btc1m", limit=5000):
         build_dataset(candles, symbol, config, skip_existing_times=set())
 
 
-def step_outcomes(symbol="BTCUSDT"):
+def step_outcomes(symbol="BTCUSDT", limit=200):
+    """아웃컴이 비어 있는 candidate_signals에 future_r_30 등 계산해 signal_outcomes에 저장."""
     from storage.database import SessionLocal, init_db
     from storage.repositories import get_candidate_signals_without_outcome
     from storage.signal_outcome import compute_outcome_for_signal
@@ -36,7 +37,7 @@ def step_outcomes(symbol="BTCUSDT"):
     init_db()
     db = SessionLocal()
     try:
-        for r in get_candidate_signals_without_outcome(db, symbol=symbol, limit=200):
+        for r in get_candidate_signals_without_outcome(db, symbol=symbol, limit=limit):
             candles = load_1m_from_db(table="btc1m", start_ts=r.time, limit=35, symbol=symbol)
             if len(candles) <= 1:
                 continue
@@ -105,6 +106,12 @@ def step_online_ml(
 
 
 def run_pipeline(symbol="BTCUSDT", output_dir="analysis/output", **skips):
+    base = Path(output_dir)
+    run_ts = datetime.now(timezone.utc).strftime("%Y%m%d%H%M")
+    run_dir = base / run_ts
+    run_dir.mkdir(parents=True, exist_ok=True)
+    logger.info("Pipeline run folder: %s", run_dir)
+
     if not skips.get("skip_sync"):
         step_sync(symbol)
     if not skips.get("skip_build"):
@@ -112,16 +119,16 @@ def run_pipeline(symbol="BTCUSDT", output_dir="analysis/output", **skips):
     if not skips.get("skip_outcomes"):
         step_outcomes(symbol=symbol)
     if not skips.get("skip_stability"):
-        step_stability(output_dir)
+        step_stability(str(run_dir))
     if not skips.get("skip_walk_forward"):
         step_walk_forward()
     if not skips.get("skip_ml"):
         step_ml()
     if not skips.get("skip_online_ml"):
         step_online_ml(symbol=symbol)
-    Path(output_dir).mkdir(parents=True, exist_ok=True)
-    p = Path(output_dir) / ("report_%s.txt" % datetime.utcnow().strftime("%Y%m%d"))
-    p.write_text("Pipeline run at %s\n" % datetime.utcnow().isoformat())
+
+    p = run_dir / ("report_%s.txt" % datetime.now(timezone.utc).strftime("%Y%m%d"))
+    p.write_text("Pipeline run at %s\n" % datetime.now(timezone.utc).isoformat())
     logger.info("Pipeline done. Report: %s", p)
 
 

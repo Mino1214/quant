@@ -14,6 +14,7 @@
     "score_threshold": 1
   },
   "strategy": {
+    "use_trend_filter": false,
     "ema_fast": 8,
     "ema_mid": 21,
     "ema_slow": 50,

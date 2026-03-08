@@ -1,5 +1,14 @@
 # Paper 진입이 안 될 때 + 리서치(학습) 흐름
 
+## 0. 1m/5m/15m 저장이 안 되는 것 같을 때
+
+- **재시작 시 로그 (sync)**: `[DONE] 1m updated rows: 14` 같은 숫자는 **갭 채우기**만 의미한다. DB에 이미 있는 **마지막 봉 이후 ~ 현재** 구간만 Binance에서 받아와 채운다. 그래서 서버를 14분 정도 꺼뒀다 켜면 14개 1m만 올 수 있다. **저장을 안 하는 게 아니라**, 그동안 비어 있던 구간만 채우는 것이다.
+- **실시간 저장**: 서버가 **켜져 있는 동안**에는 WebSocket으로 들어오는 1m(및 5m/15m) 마감 봉마다 `candle_persistence`로 DB에 저장된다. 1m은 엔진 `_on_1m_closed`에서, 5m/15m은 엔진 집계 또는 WS 수신 시 API 콜백에서 저장된다.
+- **저장 끄기**: `SAVE_CANDLES=0` 이면 1m/5m/15m DB 저장이 비활성화된다. 저장이 되게 하려면 설정하지 않거나 `SAVE_CANDLES=1` 로 두면 된다.
+- **저장 실패**: 로그에 `Save 1m to DB failed` / `Save candle btc1m ...` 같은 경고가 보이면 DB 스키마·연결 문제일 수 있다. `storage.candle_persistence`와 `storage.binance_sync`의 테이블 스키마(openTime, o, h, l, c, v 등)가 DB와 맞는지 확인하면 된다.
+
+---
+
 ## 1. Paper에서 진입이 안 되는 이유
 
 진입은 **1m 봉이 마감될 때마다** 한 번씩 평가되며, 아래 조건을 **모두** 만족해야 주문이 나갑니다.
@@ -110,12 +119,102 @@ step_online_ml (선택)
 
 ---
 
-## 3. 한 번에 정리
+## 3. candidate_signals 데이터 늘리는 방법
+
+`candidate_signals`가 적으면 파라미터 스캔·ML 학습·리서치 결과가 불안정해집니다. **과거 1m 봉**으로 후보를 만들어 DB에 채우는 방법입니다.
+
+### 3.1 순서
+
+1. **1m 캔들 먼저 DB에 채우기**  
+   `candidate_signals`는 **btc1m** 테이블의 1m 봉을 한 봉씩 돌면서 “그 시점에 전략이 내던 후보”를 만들어 저장합니다.  
+   그래서 **btc1m에 과거 1m 데이터가 있어야** 후보를 만들 수 있습니다.
+
+   ```bash
+   cd trading-bot
+   # 최근 30일치 1m 백필 (필요하면 더 늘리기)
+   PYTHONPATH=. python scripts/backfill_1m.py --days 30
+   # 또는 구간 지정
+   PYTHONPATH=. python scripts/backfill_1m.py --from 2024-01-01 --to 2024-01-31
+   ```
+
+   - 최소 **약 1,000봉 이상** 권장 (전략이 15m 50봉 등 버퍼를 쓰므로 931+ 봉 필요).  
+   - 30일 1m ≈ 43,200봉이면 후보가 많이 나옵니다.
+
+2. **build_signal_dataset으로 후보 대량 생성**  
+   리서치 파이프라인의 `step_build_dataset`은 **5,000봉**만 불러와서 처리합니다.  
+   데이터를 많이 만들려면 **build_signal_dataset CLI**를 직접 돌려서 **limit을 크게** 주거나 **구간을 지정**하세요.
+
+   ```bash
+   cd trading-bot
+   # 최근 5만 봉 기준으로 후보 생성 (이미 있는 (symbol, time) 건너뛰기)
+   PYTHONPATH=. python -m scripts.build_signal_dataset --limit 50000 --skip-existing
+   # 또는 기간 지정
+   PYTHONPATH=. python -m scripts.build_signal_dataset --start 2024-01-01 --end 2024-01-31 --skip-existing
+   ```
+
+   - `--skip-existing`: 이미 `candidate_signals`에 있는 (symbol, time)은 건너뜁니다.  
+   - 여러 번 돌리거나 기간을 나눠 돌릴 때 유용합니다.
+
+   **340만 봉처럼 많을 때**: 한 번에 `--limit 3400000` 해도 동작하지만, 메모리(수 GB)·실행 시간(수 시간~하루) 부담이 커질 수 있습니다. **배치 스크립트**로 월 단위 자동 실행을 권장합니다.
+
+   ```bash
+   # 월 단위로 나눠서 실행 (중간에 끊겨도 --skip-existing 로 이어서 실행 가능)
+   PYTHONPATH=. python scripts/build_signal_dataset_batch.py --from 2020-01-01 --to 2024-12-31
+   # 또는 최근 N일
+   PYTHONPATH=. python scripts/build_signal_dataset_batch.py --days 365
+   # 실행할 구간만 확인
+   PYTHONPATH=. python scripts/build_signal_dataset_batch.py --from 2024-01-01 --to 2024-12-31 --dry-run
+   ```
+
+3. **아웃컴 채우기**  
+   후보만 넣으면 `signal_outcomes`가 비어 있어서 스캔/ML에서 쓰이지 않습니다.  
+   리서치 파이프라인에서 **step_outcomes**를 실행하면, 아직 outcome이 없는 후보에 대해 **future_r_30** 등을 계산해 넣습니다.
+
+   ```bash
+   # 파이프라인에서 outcomes만 실행 (sync/build 건너뛰기)
+   python -m scheduler.research_pipeline --skip-sync --skip-build --skip-stability --skip-walk-forward --skip-ml --skip-online-ml
+   ```
+
+   또는 `step_outcomes`만 호출하는 스크립트가 있다면 그걸로 실행해도 됩니다.
+
+### 3.2 요약
+
+| 목적 | 명령 |
+|------|------|
+| 1m 데이터 채우기 | `scripts/backfill_1m.py --days 30` (또는 `--from` / `--to`) |
+| 후보 대량 생성 | `scripts.build_signal_dataset --limit 50000 --skip-existing` (또는 `--start` / `--end`) |
+| 아웃컴 계산 | `scheduler.research_pipeline` (build 제외, outcomes 포함) 또는 outcomes 단계만 실행 |
+
+데이터가 적을 때는 **1m 백필 → build_signal_dataset (limit/구간 크게) → outcomes** 순서로 한 번 돌려 두면, 그 다음 스캔·ML·리서치가 훨씬 안정적으로 동작합니다.
+
+### 3.3 테이블 비우기 (다시 채우기 전에)
+
+`candidate_signals` / `signal_outcomes`를 비울 때는 **FK 제약** 때문에 **자식(signal_outcomes) → 부모(candidate_signals)** 순서로 지워야 합니다.
+
+```bash
+# 스크립트로 순서대로 DELETE (권장)
+PYTHONPATH=. python scripts/clear_signal_tables.py
+```
+
+MySQL에서 직접 실행할 때:
+
+```sql
+DELETE FROM signal_outcomes;
+DELETE FROM candidate_signals;
+```
+
+`TRUNCATE`를 쓰려면 FK 검사 잠시 끄기:  
+`SET FOREIGN_KEY_CHECKS=0;` → `TRUNCATE signal_outcomes;` → `TRUNCATE candidate_signals;` → `SET FOREIGN_KEY_CHECKS=1;`
+
+---
+
+## 4. 한 번에 정리
 
 | 하고 싶은 것 | 할 일 |
 |-------------|--------|
 | Paper에서 진입이 되게 | 1m 백필(`backfill_1m.py --days 7`) 후 Paper+API 기동. 필요 시 approval/regime/ml 완화. |
 | 학습이 어떻게 되는지 이해 | pipeline: sync → build_dataset(후보 저장) → outcomes(수익률 레이블) → ml(모델 학습). 실시간은 그 모델로 win_prob/expected_R 예측. |
 | 학습 데이터 쌓기 | pipeline 정기 실행(또는 수동 실행). 1m이 충분히 있어야 build_dataset이 후보를 만들고, 그 다음 outcomes·ml이 의미 있음. |
+| **candidate_signals 늘리기** | 1m 백필(`backfill_1m.py --days 30`) → `build_signal_dataset --limit 50000 --skip-existing` → pipeline에서 outcomes 실행. |
 
-*문서 버전: 1.0*
+*문서 버전: 1.1*

@@ -10,7 +10,7 @@ from pathlib import Path
 # Ensure project root is on path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from config.loader import load_config, get_approval_settings, get_capital_allocation_settings, get_kelly_settings, get_leverage_settings, get_ml_settings, get_risk_settings, get_strategy_settings, get_regime_settings
+from config.loader import load_config, get_approval_settings, get_capital_allocation_settings, get_kelly_settings, get_leverage_settings, get_ml_settings, get_risk_settings, get_strategy_settings, get_regime_settings, get_use_trend_filter
 from core.engine import TradingEngine
 from core.state import EngineState
 from risk.risk_manager import RiskManager
@@ -95,6 +95,7 @@ def main() -> None:
         capital_allocation_settings=get_capital_allocation_settings(config),
         kelly_settings=get_kelly_settings(config),
         leverage_settings=get_leverage_settings(config),
+        use_trend_filter=get_use_trend_filter(config),
     )
 
     def on_candle(candle, is_closed: bool, interval: str):

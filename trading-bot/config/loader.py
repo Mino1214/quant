@@ -38,6 +38,12 @@ def load_symbols() -> list[str]:
     return load_json(symbols_path)
 
 
+def get_use_trend_filter(config: dict | None = None) -> bool:
+    """Trend filter: only allow LONG when ema20>ema50 and ema50_slope>0, SHORT when opposite."""
+    cfg = config or load_config()
+    return bool(cfg.get("strategy", {}).get("use_trend_filter", False))
+
+
 def get_strategy_settings(config: dict | None = None) -> StrategySettings:
     cfg = config or load_config()
     s = cfg.get("strategy", {})

@@ -133,3 +133,32 @@ export async function testBinanceConnection() {
     return { ok: false, error: e.message };
   }
 }
+
+// --- Research ---
+/** URL for a research output file. path can be "name" or "YYYYMMDDHHmm/name" for timestamped runs. */
+export function researchOutputUrl(path) {
+  const segments = (path || '').split('/').map((s) => encodeURIComponent(s)).join('/');
+  return apiUrl('research/output/' + segments);
+}
+
+export async function getResearchOutputs() {
+  try {
+    const r = await fetch(apiUrl('research/outputs'));
+    if (!r.ok) return { files: [] };
+    return await safeJson(r) || { files: [] };
+  } catch {
+    return { files: [] };
+  }
+}
+
+export async function runResearch(opts = {}) {
+  const params = new URLSearchParams();
+  if (opts.skip_sync !== undefined) params.set('skip_sync', opts.skip_sync);
+  if (opts.skip_stability !== undefined) params.set('skip_stability', opts.skip_stability);
+  if (opts.skip_walk_forward !== undefined) params.set('skip_walk_forward', opts.skip_walk_forward);
+  if (opts.skip_ml !== undefined) params.set('skip_ml', opts.skip_ml);
+  if (opts.skip_online_ml !== undefined) params.set('skip_online_ml', opts.skip_online_ml);
+  const q = params.toString() ? '?' + params : '';
+  const r = await fetch(apiUrl('research/run') + q, { method: 'POST' });
+  return await safeJson(r) || { ok: false, error: 'No response' };
+}

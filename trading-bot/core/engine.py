@@ -51,6 +51,7 @@ class TradingEngine:
         capital_allocation_settings: Optional[CapitalAllocationSettings] = None,
         kelly_settings=None,
         leverage_settings=None,
+        use_trend_filter: bool = False,
     ):
         self.state = state
         self.broker = broker
@@ -62,6 +63,7 @@ class TradingEngine:
         self.regime_filter = regime_filter
         self.approval_settings = approval_settings
         self._ml_settings: dict = ml_settings or {}
+        self.use_trend_filter = use_trend_filter
         self._capital_allocation: Optional[CapitalAllocationSettings] = capital_allocation_settings
         self._kelly_settings = kelly_settings
         self._leverage_settings = leverage_settings
@@ -82,8 +84,8 @@ class TradingEngine:
         try:
             from storage.candle_persistence import save_candle_1m
             save_candle_1m(c, symbol=self.symbol)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Save 1m to DB failed: %s", e)
         buf = self.state.get_1m_list()
         if len(buf) >= 5 and c.timestamp.minute % 5 == 0:
             from market.timeframe_aggregator import aggregate_candles
@@ -93,8 +95,8 @@ class TradingEngine:
                 try:
                     from storage.candle_persistence import save_candle_5m
                     save_candle_5m(c5, symbol=self.symbol)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning("Save 5m to DB failed: %s", e)
         if len(buf) >= 15 and c.timestamp.minute % 15 == 0:
             from market.timeframe_aggregator import aggregate_candles
             c15 = aggregate_candles(buf[-15:], 15)
@@ -103,8 +105,8 @@ class TradingEngine:
                 try:
                     from storage.candle_persistence import save_candle_15m
                     save_candle_15m(c15, symbol=self.symbol)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning("Save 15m to DB failed: %s", e)
         if not quiet:
             logger.info("Candle close 1m ts=%s", c.timestamp)
         return True
@@ -295,6 +297,16 @@ class TradingEngine:
             )
         except Exception:
             pass
+
+        # Trend filter: LONG only if ema20>ema50 and ema50_slope>0, SHORT only if opposite
+        if self.use_trend_filter:
+            bias = float(features.get("trend_bias", 0) or 0)
+            if candidate.direction == Direction.LONG and bias < 0.5:
+                logger.debug("Trend filter block: long but trend_bias=%.2f", bias)
+                return
+            if candidate.direction == Direction.SHORT and bias > -0.5:
+                logger.debug("Trend filter block: short but trend_bias=%.2f", bias)
+                return
 
         def _log_candidate_snapshot(
             trade_outcome: str,
