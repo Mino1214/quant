@@ -1,0 +1,2 @@
+timestamp,entry_price,regime,trend_direction,approval_score,ema_distance,volume_ratio,rsi_5m,trade_outcome,blocked_reason,R_return,holding_time_bars,symbol
+2026-03-07T14:54:23.289790,50000.0,TRENDING_UP,long,5,0.001,1.5,58.0,executed,,0.5,12,BTCUSDT

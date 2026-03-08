@@ -1,0 +1,105 @@
+{
+  "trading_mode": "paper",
+  "symbol": "BTCUSDT",
+  "regime": {
+    "enabled": true,
+    "ema_slow_len": 50,
+    "slope_lookback": 5,
+    "slope_threshold_pct": 0.008,
+    "adx_len": 14,
+    "adx_min": 10,
+    "atr_len": 14,
+    "natr_min": 0.02,
+    "natr_max": 1.2,
+    "score_threshold": 1
+  },
+  "strategy": {
+    "ema_fast": 8,
+    "ema_mid": 21,
+    "ema_slow": 50,
+    "slope_threshold": 0.0001,
+    "ema_distance_threshold": 0.0006,
+    "volume_ma_period": 20,
+    "volume_multiplier": 1.2,
+    "momentum_body_ratio": 0.5,
+    "signal_score_threshold": 3,
+    "rsi_period": 14,
+    "rsi_long_min": 55,
+    "rsi_short_max": 45,
+    "swing_lookback": 10
+  },
+  "risk": {
+    "risk_per_trade_pct": 0.5,
+    "atr_multiplier": 1.5,
+    "atr_period": 14,
+    "swing_lookback": 10,
+    "partial_tp_R": 1,
+    "partial_tp_size": 0.5,
+    "trailing_atr_multiplier": 2,
+    "max_bars_in_trade": 30,
+    "ema_exit_confirm_bars": 1,
+    "rr_target": 2,
+    "daily_loss_limit_r": -2,
+    "daily_profit_limit_r": 3,
+    "max_trades_per_day": 100,
+    "cooldown_bars": 3
+  },
+  "approval": {
+    "approval_threshold": 5,
+    "regime_adx_min": 10,
+    "regime_score_min": 1,
+    "trend_ema_aligned": true,
+    "trigger_pullback_ok": true,
+    "volume_multiplier_min": 1.2,
+    "volume_expansion_required": true,
+    "ema_distance_threshold": 0.0006,
+    "momentum_body_ratio": 0.5,
+    "breakout_required": true,
+    "min_rr_ratio": 0.5
+  },
+  "backtest": {
+    "initial_balance": 10000,
+    "commission_rate": 0.0004
+  },
+  "ml": {
+    "enabled": false,
+    "model_path": "ml/models",
+    "threshold_win_prob": 0.58,
+    "threshold_expected_r": 0.25
+  },
+  "capital_allocation": {
+    "enabled": true,
+    "min_quality_threshold": 0.55,
+    "tiers": [[0.75, 3.0], [0.65, 2.0], [0.55, 1.0]],
+    "max_portfolio_risk_pct": 6.0,
+    "regime_multipliers": {
+      "TRENDING_UP": 1.2,
+      "TRENDING_DOWN": 1.2,
+      "RANGING": 1.0,
+      "CHAOTIC": 0.5
+    },
+    "default_strategy_stability_score": 0.5
+  },
+  "kelly": {
+    "enabled": true,
+    "fractional_kelly": 0.25,
+    "max_risk_per_trade_pct": 1.0,
+    "min_risk_per_trade_pct": 0.25,
+    "avg_win_R": 1.2,
+    "avg_loss_R": -1.0
+  },
+  "leverage": {
+    "enabled": true,
+    "max_leverage": 5.0,
+    "max_position_risk_pct": 1.0,
+    "regime_leverage": {
+      "TRENDING_UP": 3.0,
+      "TRENDING_DOWN": 3.0,
+      "RANGE": 1.5,
+      "RANGING": 1.5,
+      "CHAOTIC": 0.5,
+      "UNKNOWN": 1.0
+    }
+  },
+  "_comment_profit": "수익률 개선: approval_threshold 올리면(예 6) 거래 수↓ 질↑, regime.score_threshold 올리면(예 2) 필터 강화. commission_rate는 페이퍼/백테스트 PnL에서 taker 수수료로 차감됨."
+}
