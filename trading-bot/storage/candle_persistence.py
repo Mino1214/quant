@@ -24,7 +24,8 @@ def _ts_ms(c: Candle) -> int:
 
 def _insert_candle(table: str, c: Candle, symbol: str, interval_ms: int) -> None:
     """
-    수집기와 동일 스키마: symbol, openTime, o, h, l, c, v, closeTime, createdAt.
+    수집기와 동일 스키마: symbol, openTime, o, h, l, c, v, closeTime, createdAt
+    + 확장 컬럼(quote_volume, trade_count, taker_buy_volume, taker_buy_quote_volume).
     PK (symbol, openTime) → ON DUPLICATE KEY UPDATE.
     """
     if not SAVE_CANDLES:
@@ -33,11 +34,39 @@ def _insert_candle(table: str, c: Candle, symbol: str, interval_ms: int) -> None
     close_ms = open_ms + interval_ms
     now_ms = int(time.time() * 1000)
     sql = f"""
-        INSERT INTO `{table}` (symbol, openTime, o, h, l, c, v, closeTime, createdAt)
-        VALUES (:symbol, :openTime, :o, :h, :l, :c, :v, :closeTime, :createdAt)
+        INSERT INTO `{table}` (
+            symbol,
+            openTime,
+            o, h, l, c, v,
+            closeTime,
+            createdAt,
+            quote_volume,
+            trade_count,
+            taker_buy_volume,
+            taker_buy_quote_volume
+        )
+        VALUES (
+            :symbol,
+            :openTime,
+            :o, :h, :l, :c, :v,
+            :closeTime,
+            :createdAt,
+            :quote_volume,
+            :trade_count,
+            :taker_buy_volume,
+            :taker_buy_quote_volume
+        )
         ON DUPLICATE KEY UPDATE
-          o=VALUES(o), h=VALUES(h), l=VALUES(l), c=VALUES(c), v=VALUES(v),
-          closeTime=VALUES(closeTime)
+          o=VALUES(o),
+          h=VALUES(h),
+          l=VALUES(l),
+          c=VALUES(c),
+          v=VALUES(v),
+          closeTime=VALUES(closeTime),
+          quote_volume=VALUES(quote_volume),
+          trade_count=VALUES(trade_count),
+          taker_buy_volume=VALUES(taker_buy_volume),
+          taker_buy_quote_volume=VALUES(taker_buy_quote_volume)
     """
     params = {
         "symbol": symbol,
@@ -49,6 +78,10 @@ def _insert_candle(table: str, c: Candle, symbol: str, interval_ms: int) -> None
         "v": c.volume,
         "closeTime": close_ms,
         "createdAt": now_ms,
+        "quote_volume": getattr(c, "quote_volume", None),
+        "trade_count": getattr(c, "trade_count", None),
+        "taker_buy_volume": getattr(c, "taker_buy_volume", None),
+        "taker_buy_quote_volume": getattr(c, "taker_buy_quote_volume", None),
     }
     try:
         with engine.connect() as conn:

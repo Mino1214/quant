@@ -1,0 +1,64 @@
+{
+  "config": {
+    "symbol": "BTCUSDT",
+    "from_ts": "2025-03-01",
+    "to_ts": "2025-08-31",
+    "regime_threshold": 0.000285,
+    "exit_type": "old",
+    "tp_pct": 1.2,
+    "tp1_pct": 0.8,
+    "tp1_size": 0.5,
+    "sl_pct": 0.6,
+    "timeout_bars": 30,
+    "initial_capital": 1000.0,
+    "notional_fraction": 0.1,
+    "leverage": 2.0,
+    "fee_bps": 4.0
+  },
+  "total_trades": 205,
+  "win_rate_pct": 50.73,
+  "profit_factor": 1.2232,
+  "total_return_pct": 1.1572,
+  "final_equity": 1011.5715,
+  "initial_capital": 1000.0,
+  "max_drawdown_pct": -1.0968,
+  "avg_trade_net_pct": 0.0282,
+  "max_consecutive_losses": 7,
+  "monthly_returns": {
+    "2025-02": {
+      "pnl_usdt": 2.3387,
+      "return_pct": 0.2339,
+      "n_trades": 2
+    },
+    "2025-03": {
+      "pnl_usdt": 1.1858,
+      "return_pct": 0.1183,
+      "n_trades": 43
+    },
+    "2025-04": {
+      "pnl_usdt": 7.4838,
+      "return_pct": 0.7458,
+      "n_trades": 36
+    },
+    "2025-05": {
+      "pnl_usdt": -5.6556,
+      "return_pct": -0.5594,
+      "n_trades": 40
+    },
+    "2025-06": {
+      "pnl_usdt": 2.9748,
+      "return_pct": 0.2959,
+      "n_trades": 28
+    },
+    "2025-07": {
+      "pnl_usdt": 3.3409,
+      "return_pct": 0.3313,
+      "n_trades": 32
+    },
+    "2025-08": {
+      "pnl_usdt": -0.0968,
+      "return_pct": -0.0096,
+      "n_trades": 24
+    }
+  }
+}

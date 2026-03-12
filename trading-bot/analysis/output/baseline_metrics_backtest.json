@@ -1,0 +1,10 @@
+{
+  "total_trades": 185,
+  "winrate": 22.702702702702705,
+  "avg_R": -0.401709073022044,
+  "profit_factor": 0.0843558170527343,
+  "max_drawdown": 3261.337395279218,
+  "sharpe": -9.5565,
+  "initial_balance": 10000,
+  "final_balance": 6738.662604720783
+}

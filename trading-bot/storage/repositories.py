@@ -200,42 +200,110 @@ def get_candidate_signals_without_outcome(db: Session, symbol: Optional[str] = N
     return q.order_by(CandidateSignalModel.time.asc(), CandidateSignalModel.id.asc()).limit(limit).all()
 
 
-def get_candidate_signals_with_outcomes(db: Session, symbol: Optional[str] = None, limit: int = 10000) -> List[dict]:
+_ALLOWED_SIGNAL_TABLES = {"candidate_signals", "candidate_signals_sorted"}
+
+
+def get_candidate_signals_with_outcomes(
+    db: Session,
+    symbol: Optional[str] = None,
+    limit: int = 10000,
+    signals_table: str = "candidate_signals",
+) -> List[dict]:
     """Return joined candidate_signals + signal_outcomes as list of dicts for stability map / ML.
     항상 시간순 정렬(time ASC, id ASC). Worker 병렬 삽입으로 id가 시간순이 아니어도 안전.
     리서치/스캔/volume report/ML 등 DB에서 시그널 불러올 때 이 함수만 사용하면 됨.
     Merges feature_values_ext (JSON) into each row when present."""
-    q = (
-        db.query(CandidateSignalModel, SignalOutcomeModel)
-        .join(SignalOutcomeModel, CandidateSignalModel.id == SignalOutcomeModel.candidate_signal_id)
-    )
-    if symbol:
-        q = q.filter(CandidateSignalModel.symbol == symbol)
-    # Worker 병렬 삽입 시 id 순서가 시간 순이 아닐 수 있음 → 항상 시간 기준 정렬
-    rows = q.order_by(CandidateSignalModel.time.asc(), CandidateSignalModel.id.asc()).limit(limit).all()
-    out = []
-    for c, o in rows:
+    if signals_table not in _ALLOWED_SIGNAL_TABLES:
+        raise ValueError(f"Unsupported signals_table: {signals_table}")
+
+    # Default: ORM model on candidate_signals
+    if signals_table == "candidate_signals":
+        q = (
+            db.query(CandidateSignalModel, SignalOutcomeModel)
+            .join(SignalOutcomeModel, CandidateSignalModel.id == SignalOutcomeModel.candidate_signal_id)
+        )
+        if symbol:
+            q = q.filter(CandidateSignalModel.symbol == symbol)
+        # Worker 병렬 삽입 시 id 순서가 시간 순이 아닐 수 있음 → 항상 시간 기준 정렬
+        rows = q.order_by(CandidateSignalModel.time.asc(), CandidateSignalModel.id.asc()).limit(limit).all()
+        out: list[dict] = []
+        for c, o in rows:
+            row = {
+                "time": c.time,
+                "close": c.close,
+                "side": c.side,
+                "regime": c.regime,
+                "trend_direction": c.side,
+                "approval_score": c.approval_score,
+                "ema_distance": c.ema_distance or 0,
+                "volume_ratio": c.volume_ratio or 0,
+                "rsi": c.rsi or 0,
+                "rsi_5m": c.rsi or 0,
+                "trade_outcome": c.trade_outcome,
+                "R_return": o.future_r_30,
+                "future_r_5": o.future_r_5,
+                "future_r_10": o.future_r_10,
+                "future_r_20": o.future_r_20,
+                "future_r_30": o.future_r_30,
+            }
+            if getattr(c, "feature_values_ext", None) and c.feature_values_ext:
+                try:
+                    ext = json.loads(c.feature_values_ext)
+                    if isinstance(ext, dict):
+                        row.update(ext)
+                except (json.JSONDecodeError, TypeError):
+                    pass
+            out.append(row)
+        return out
+
+    # Non-default: query a table/view with the same schema (e.g. candidate_signals_sorted)
+    sql = f"""
+    SELECT
+        cs.time AS time,
+        cs.close AS close,
+        cs.side AS side,
+        cs.regime AS regime,
+        cs.approval_score AS approval_score,
+        cs.ema_distance AS ema_distance,
+        cs.volume_ratio AS volume_ratio,
+        cs.rsi AS rsi,
+        cs.trade_outcome AS trade_outcome,
+        cs.feature_values_ext AS feature_values_ext,
+        so.future_r_5 AS future_r_5,
+        so.future_r_10 AS future_r_10,
+        so.future_r_20 AS future_r_20,
+        so.future_r_30 AS future_r_30
+    FROM `{signals_table}` cs
+    JOIN signal_outcomes so ON cs.id = so.candidate_signal_id
+    WHERE (:symbol IS NULL OR cs.symbol = :symbol)
+    ORDER BY cs.time ASC, cs.id ASC
+    LIMIT :limit
+    """
+    rows = db.execute(text(sql), {"symbol": symbol, "limit": int(limit)}).mappings().all()
+    out: list[dict] = []
+    for r in rows:
         row = {
-            "time": c.time,
-            "close": c.close,
-            "side": c.side,
-            "regime": c.regime,
-            "trend_direction": c.side,
-            "approval_score": c.approval_score,
-            "ema_distance": c.ema_distance or 0,
-            "volume_ratio": c.volume_ratio or 0,
-            "rsi": c.rsi or 0,
-            "rsi_5m": c.rsi or 0,
-            "trade_outcome": c.trade_outcome,
-            "R_return": o.future_r_30,
-            "future_r_5": o.future_r_5,
-            "future_r_10": o.future_r_10,
-            "future_r_20": o.future_r_20,
-            "future_r_30": o.future_r_30,
+            "time": r.get("time"),
+            "close": float(r.get("close") or 0),
+            "side": r.get("side"),
+            "regime": r.get("regime"),
+            "trend_direction": r.get("side"),
+            "approval_score": r.get("approval_score"),
+            "ema_distance": float(r.get("ema_distance") or 0),
+            "volume_ratio": float(r.get("volume_ratio") or 0),
+            "rsi": float(r.get("rsi") or 0),
+            "rsi_5m": float(r.get("rsi") or 0),
+            "trade_outcome": r.get("trade_outcome"),
+            "R_return": r.get("future_r_30"),
+            "future_r_5": r.get("future_r_5"),
+            "future_r_10": r.get("future_r_10"),
+            "future_r_20": r.get("future_r_20"),
+            "future_r_30": r.get("future_r_30"),
         }
-        if getattr(c, "feature_values_ext", None) and c.feature_values_ext:
+        ext_raw = r.get("feature_values_ext")
+        if ext_raw:
             try:
-                ext = json.loads(c.feature_values_ext)
+                ext = json.loads(ext_raw)
                 if isinstance(ext, dict):
                     row.update(ext)
             except (json.JSONDecodeError, TypeError):

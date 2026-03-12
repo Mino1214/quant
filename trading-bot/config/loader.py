@@ -4,7 +4,7 @@ Load config from JSON and environment variables.
 import json
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict, List, Optional
 
 from core.models import ApprovalSettings, CapitalAllocationSettings, KellySettings, LeverageSettings, RiskSettings, StrategySettings
 from strategy.filters.market_regime import RegimeSettings
@@ -32,19 +32,36 @@ def load_config() -> dict:
     return load_json(config_path)
 
 
-def load_symbols() -> list[str]:
+def load_baseline_profile() -> dict:
+    """
+    Load baseline strategy profile and merge over main config.
+    Use this for baseline backtest and as reference for experiment comparison.
+    """
+    base = load_config()
+    root = _project_root()
+    baseline_path = root / "config" / "baseline_strategy.json"
+    if not baseline_path.exists():
+        return base
+    overlay = load_json(baseline_path)
+    for key in ("strategy", "approval"):
+        if key in overlay and isinstance(overlay[key], dict):
+            base[key] = {**(base.get(key) or {}), **overlay[key]}
+    return base
+
+
+def load_symbols() -> List[str]:
     root = _project_root()
     symbols_path = root / "config" / "symbols.json"
     return load_json(symbols_path)
 
 
-def get_use_trend_filter(config: dict | None = None) -> bool:
+def get_use_trend_filter(config: Optional[Dict] = None) -> bool:
     """Trend filter: only allow LONG when ema20>ema50 and ema50_slope>0, SHORT when opposite."""
     cfg = config or load_config()
     return bool(cfg.get("strategy", {}).get("use_trend_filter", False))
 
 
-def get_strategy_settings(config: dict | None = None) -> StrategySettings:
+def get_strategy_settings(config: Optional[Dict] = None) -> StrategySettings:
     cfg = config or load_config()
     s = cfg.get("strategy", {})
     return StrategySettings(
@@ -64,7 +81,7 @@ def get_strategy_settings(config: dict | None = None) -> StrategySettings:
     )
 
 
-def get_risk_settings(config: dict | None = None) -> RiskSettings:
+def get_risk_settings(config: Optional[Dict] = None) -> RiskSettings:
     cfg = config or load_config()
     r = cfg.get("risk", {})
     return RiskSettings(
@@ -85,7 +102,7 @@ def get_risk_settings(config: dict | None = None) -> RiskSettings:
     )
 
 
-def get_approval_settings(config: dict | None = None) -> ApprovalSettings:
+def get_approval_settings(config: Optional[Dict] = None) -> ApprovalSettings:
     cfg = config or load_config()
     a = cfg.get("approval", {})
     return ApprovalSettings(
@@ -103,7 +120,7 @@ def get_approval_settings(config: dict | None = None) -> ApprovalSettings:
     )
 
 
-def get_ml_settings(config: dict | None = None) -> dict:
+def get_ml_settings(config: Optional[Dict] = None) -> Dict:
     """ML gate: enabled, model_path, threshold_win_prob, threshold_expected_r."""
     cfg = config or load_config()
     m = cfg.get("ml", {})
@@ -115,7 +132,7 @@ def get_ml_settings(config: dict | None = None) -> dict:
     }
 
 
-def get_leverage_settings(config: dict | None = None) -> LeverageSettings:
+def get_leverage_settings(config: Optional[Dict] = None) -> LeverageSettings:
     """Regime-adaptive leverage: max_leverage, regime_leverage map."""
     cfg = config or load_config()
     lev = cfg.get("leverage", {})
@@ -127,7 +144,7 @@ def get_leverage_settings(config: dict | None = None) -> LeverageSettings:
     )
 
 
-def get_kelly_settings(config: dict | None = None) -> KellySettings:
+def get_kelly_settings(config: Optional[Dict] = None) -> KellySettings:
     """Kelly criterion: enabled, fractional_kelly, risk caps, avg_win_R, avg_loss_R."""
     cfg = config or load_config()
     k = cfg.get("kelly", {})
@@ -141,7 +158,7 @@ def get_kelly_settings(config: dict | None = None) -> KellySettings:
     )
 
 
-def get_capital_allocation_settings(config: dict | None = None) -> CapitalAllocationSettings:
+def get_capital_allocation_settings(config: Optional[Dict] = None) -> CapitalAllocationSettings:
     """Capital allocation: min_quality_threshold, tiers, max_portfolio_risk_pct, regime_multipliers."""
     cfg = config or load_config()
     ca = cfg.get("capital_allocation", {})
@@ -158,18 +175,18 @@ def get_capital_allocation_settings(config: dict | None = None) -> CapitalAlloca
     )
 
 
-def get_regime_settings(config: dict | None = None) -> RegimeSettings:
+def get_regime_settings(config: Optional[Dict] = None) -> RegimeSettings:
     cfg = config or load_config()
     r = cfg.get("regime", {})
     return RegimeSettings(
         enabled=r.get("enabled", True),
         ema_slow_len=r.get("ema_slow_len", 50),
         slope_lookback=r.get("slope_lookback", 5),
-        slope_threshold_pct=r.get("slope_threshold_pct", 0.008),
+        slope_threshold_pct=r.get("slope_threshold_pct", 0.03),
         adx_len=r.get("adx_len", 14),
-        adx_min=r.get("adx_min", 10.0),
+        adx_min=r.get("adx_min", 18.0),
         atr_len=r.get("atr_len", 14),
-        natr_min=r.get("natr_min", 0.02),
+        natr_min=r.get("natr_min", 0.03),
         natr_max=r.get("natr_max", 1.20),
-        score_threshold=r.get("score_threshold", 1),
+        score_threshold=r.get("score_threshold", 2),
     )

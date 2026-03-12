@@ -153,6 +153,43 @@ def main() -> None:
                     f.write(f"    Horizon {r['horizon']}: trades={r['trades']} avg_R={r['avg_R']:.3f}\n")
     print("Wrote", summary_path)
 
+    # edge_decay_plot.png: avg_R vs horizon (overall)
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        horizons = [r["horizon"] for r in report["overall"]]
+        avg_rs = [r["avg_R"] for r in report["overall"]]
+        fig, ax = plt.subplots()
+        ax.plot(horizons, avg_rs, "o-", color="steelblue", linewidth=2, markersize=8)
+        ax.set_xlabel("Holding horizon (bars)")
+        ax.set_ylabel("Avg R")
+        ax.set_title("Edge decay: avg R by horizon")
+        ax.axhline(0, color="gray", linestyle="--")
+        fig.tight_layout()
+        plot_path = out_dir / "edge_decay_plot.png"
+        fig.savefig(plot_path, dpi=100)
+        plt.close(fig)
+        print("Wrote", plot_path)
+    except ImportError:
+        pass
+
+    # optimal_holding_period.txt: recommend best horizon from avg_R
+    best = max(report["overall"], key=lambda r: r.get("avg_R") or -1e9)
+    opt_path = out_dir / "optimal_holding_period.txt"
+    lines = [
+        "Optimal holding period (from edge decay analysis)",
+        "=" * 50,
+        f"Best horizon (by avg_R): {best['horizon']} bars",
+        f"  avg_R: {best.get('avg_R', 0):.4f}",
+        f"  winrate: {best.get('winrate', 0):.1f}%",
+        f"  profit_factor: {best.get('profit_factor', 0):.2f}",
+        "",
+        "Use this to tune TP / trailing / max_bars_in_trade in risk config.",
+    ]
+    opt_path.write_text("\n".join(lines), encoding="utf-8")
+    print("Wrote", opt_path)
+
 
 if __name__ == "__main__":
     main()

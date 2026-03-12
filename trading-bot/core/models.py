@@ -29,6 +29,11 @@ class Candle:
     volume: float
     timestamp: datetime
     timeframe: Timeframe
+    # Optional extended fields when available from DB (Binance-style)
+    quote_volume: float = 0.0
+    trade_count: int = 0
+    taker_buy_volume: float = 0.0
+    taker_buy_quote_volume: float = 0.0
 
     @property
     def is_bullish(self) -> bool:

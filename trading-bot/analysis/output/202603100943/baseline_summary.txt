@@ -1,0 +1,12 @@
+Baseline strategy — performance summary
+==================================================
+(candidate_signals 테이블 기준)
+
+Total trades:     404
+Win rate:         43.07%
+Avg R:            -0.1361
+Profit factor:   0.9008
+Max drawdown:    88.02
+Sharpe (R):      -0.7010
+
+Total R:          -54.98  (시그널 기준 — 달러 잔고/Net PnL은 backtest 모드에서만 의미 있음)

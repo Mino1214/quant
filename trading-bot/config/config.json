@@ -5,23 +5,23 @@
     "enabled": true,
     "ema_slow_len": 50,
     "slope_lookback": 5,
-    "slope_threshold_pct": 0.008,
+    "slope_threshold_pct": 0.03,
     "adx_len": 14,
-    "adx_min": 10,
+    "adx_min": 18,
     "atr_len": 14,
-    "natr_min": 0.02,
+    "natr_min": 0.03,
     "natr_max": 1.2,
-    "score_threshold": 1
+    "score_threshold": 2
   },
   "strategy": {
-    "use_trend_filter": false,
+    "use_trend_filter": true,
     "ema_fast": 8,
     "ema_mid": 21,
     "ema_slow": 50,
     "slope_threshold": 0.0001,
-    "ema_distance_threshold": 0.0006,
+    "ema_distance_threshold": 0.0005,
     "volume_ma_period": 20,
-    "volume_multiplier": 1.2,
+    "volume_multiplier": 1.1,
     "momentum_body_ratio": 0.5,
     "signal_score_threshold": 3,
     "rsi_period": 14,
@@ -46,16 +46,16 @@
     "cooldown_bars": 3
   },
   "approval": {
-    "approval_threshold": 5,
+    "approval_threshold": 3,
     "regime_adx_min": 10,
     "regime_score_min": 1,
     "trend_ema_aligned": true,
     "trigger_pullback_ok": true,
-    "volume_multiplier_min": 1.2,
+    "volume_multiplier_min": 1.1,
     "volume_expansion_required": true,
-    "ema_distance_threshold": 0.0006,
+    "ema_distance_threshold": 0.0005,
     "momentum_body_ratio": 0.5,
-    "breakout_required": true,
+    "breakout_required": false,
     "min_rr_ratio": 0.5
   },
   "backtest": {
@@ -102,5 +102,5 @@
       "UNKNOWN": 1.0
     }
   },
-  "_comment_profit": "수익률 개선: approval_threshold 올리면(예 6) 거래 수↓ 질↑, regime.score_threshold 올리면(예 2) 필터 강화. commission_rate는 페이퍼/백테스트 PnL에서 taker 수수료로 차감됨."
+  "_comment_profit": "현재값은 진입 필터 과강화 완화용 설정. use_trend_filter=true, approval_threshold=3, breakout_required=false, volume/ema 거리 조건을 소폭 완화해 진입 품질과 거래 수 균형을 다시 확인한다. 백테스트 후 PF, mean_net_pct, trade count를 비교해 추가 조정한다."
 }

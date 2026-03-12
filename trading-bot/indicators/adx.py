@@ -1,7 +1,7 @@
 """
 Average Directional Index (ADX). Measures trend strength.
 """
-from typing import List
+from typing import List, Optional
 
 from core.models import Candle
 
@@ -24,7 +24,7 @@ def _dm_components(candles: List[Candle]) -> List[tuple[float, float, float]]:
     return out
 
 
-def adx(candles: List[Candle], period: int = 14) -> float | None:
+def adx(candles: List[Candle], period: int = 14) -> Optional[float]:
     """
     ADX of the last bar. Uses Wilder smoothing.
     Returns None if not enough data (need period*2+ bars).

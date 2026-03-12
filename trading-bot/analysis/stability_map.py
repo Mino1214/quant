@@ -35,6 +35,16 @@ def _get_float(r: dict, key: str, default: float = 0.0) -> float:
         return default
 
 
+def _normalize_regime(regime: str) -> str:
+    """Normalize regime string: RANGE -> RANGING for consistency with output file names."""
+    if not regime:
+        return ""
+    r = (regime or "").strip().upper()
+    if r == "RANGE":
+        return "RANGING"
+    return r
+
+
 def filter_by_entry_quality(
     rows: List[dict],
     min_pullback_depth_pct: Optional[float] = None,
@@ -87,8 +97,17 @@ def _filter_by_thresholds(
     vol_t: float,
     rsi_t: float,
     use_trend_filter: bool = False,
+    *,
+    momentum_ratio_threshold: Optional[float] = None,
+    pullback_depth_min: Optional[float] = None,
+    pullback_depth_max: Optional[float] = None,
+    breakout_confirmation_required: bool = False,
+    upper_wick_ratio_max: Optional[float] = None,
+    lower_wick_ratio_max: Optional[float] = None,
+    ema50_slope_min: Optional[float] = None,
+    allowed_regimes: Optional[List[str]] = None,
 ) -> List[dict]:
-    """Keep rows that pass virtual thresholds. Long: rsi >= rsi_t; Short: rsi <= 100 - rsi_t. Optional trend filter."""
+    """Keep rows that pass virtual thresholds. Long: rsi >= rsi_t; Short: rsi <= 100 - rsi_t. Optional trend and entry-quality filters."""
     filtered = []
     for r in rows:
         try:
@@ -101,6 +120,10 @@ def _filter_by_thresholds(
                 rsi_val = 50.0
         except (TypeError, ValueError):
             continue
+        if allowed_regimes is not None:
+            reg = _normalize_regime(r.get("regime") or "")
+            if reg not in allowed_regimes:
+                continue
         if ema_d < ema_t:
             continue
         if vol_r < vol_t:
@@ -112,14 +135,37 @@ def _filter_by_thresholds(
         else:
             if rsi_val > (100 - rsi_t):
                 continue
+        if momentum_ratio_threshold is not None:
+            momentum = _get_float(r, "momentum_ratio", 0.0)
+            if momentum < momentum_ratio_threshold:
+                continue
+        if pullback_depth_min is not None or pullback_depth_max is not None:
+            pullback = _get_float(r, "pullback_depth_pct", -1.0)
+            if pullback_depth_min is not None and pullback < pullback_depth_min:
+                continue
+            if pullback_depth_max is not None and pullback > pullback_depth_max:
+                continue
+        if breakout_confirmation_required:
+            breakout = _get_float(r, "breakout_confirmation", 0.0)
+            if "long" in side and breakout <= 0:
+                continue
+            if "short" in side and breakout >= 0:
+                continue
+        if upper_wick_ratio_max is not None and "long" in side:
+            if _get_float(r, "upper_wick_ratio", 1.0) > upper_wick_ratio_max:
+                continue
+        if lower_wick_ratio_max is not None and "short" in side:
+            if _get_float(r, "lower_wick_ratio", 1.0) > lower_wick_ratio_max:
+                continue
         if use_trend_filter:
             ema20_gt = _get_float(r, "ema20_gt_ema50")
             slope = _get_float(r, "ema50_slope")
+            slope_min = ema50_slope_min if ema50_slope_min is not None else 0.0
             if "long" in side:
-                if ema20_gt < 0.5 or slope <= 0:
+                if ema20_gt < 0.5 or slope < slope_min:
                     continue
             else:
-                if ema20_gt >= 0.5 or slope >= 0:
+                if ema20_gt >= 0.5 or slope > -slope_min:
                     continue
         filtered.append(r)
     return filtered
@@ -131,19 +177,27 @@ def _filter_by_thresholds_with_debug(
     vol_t: float,
     rsi_t: float,
     use_trend_filter: bool = False,
+    *,
+    momentum_ratio_threshold: Optional[float] = None,
+    pullback_depth_min: Optional[float] = None,
+    pullback_depth_max: Optional[float] = None,
+    breakout_confirmation_required: bool = False,
+    upper_wick_ratio_max: Optional[float] = None,
+    lower_wick_ratio_max: Optional[float] = None,
+    ema50_slope_min: Optional[float] = None,
+    allowed_regimes: Optional[List[str]] = None,
 ) -> tuple[List[dict], dict]:
     """Same as _filter_by_thresholds but also return counts after each stage for parameter_scan_debug.csv."""
     total = len(rows)
-    after_ema = []
-    for r in rows:
-        ema_d = _get_float(r, "ema_distance")
-        if ema_d >= ema_t:
-            after_ema.append(r)
-    after_vol = []
-    for r in after_ema:
-        vol_r = _get_float(r, "volume_ratio")
-        if vol_r >= vol_t:
-            after_vol.append(r)
+    # Regime filter (optional)
+    if allowed_regimes is not None:
+        after_regime = [r for r in rows if _normalize_regime(r.get("regime") or "") in allowed_regimes]
+    else:
+        after_regime = list(rows)
+    n_regime = len(after_regime)
+
+    after_ema = [r for r in after_regime if _get_float(r, "ema_distance") >= ema_t]
+    after_vol = [r for r in after_ema if _get_float(r, "volume_ratio") >= vol_t]
     after_rsi = []
     for r in after_vol:
         rsi_val = _get_float(r, "rsi", 50.0) or _get_float(r, "rsi_5m", 50.0) or 50.0
@@ -152,24 +206,77 @@ def _filter_by_thresholds_with_debug(
             after_rsi.append(r)
         elif "short" in side and rsi_val <= (100 - rsi_t):
             after_rsi.append(r)
-    final = after_rsi if not use_trend_filter else []
-    if use_trend_filter:
-        for r in after_rsi:
-            ema20_gt = _get_float(r, "ema20_gt_ema50")
-            slope = _get_float(r, "ema50_slope")
+
+    after_momentum = after_rsi
+    if momentum_ratio_threshold is not None:
+        after_momentum = [r for r in after_rsi if _get_float(r, "momentum_ratio", 0.0) >= momentum_ratio_threshold]
+    n_momentum = len(after_momentum)
+
+    after_pullback = after_momentum
+    if pullback_depth_min is not None or pullback_depth_max is not None:
+        after_pullback = []
+        for r in after_momentum:
+            pullback = _get_float(r, "pullback_depth_pct", -1.0)
+            if pullback_depth_min is not None and pullback < pullback_depth_min:
+                continue
+            if pullback_depth_max is not None and pullback > pullback_depth_max:
+                continue
+            after_pullback.append(r)
+    n_pullback = len(after_pullback)
+
+    after_breakout = after_pullback
+    if breakout_confirmation_required:
+        after_breakout = []
+        for r in after_pullback:
             side = (r.get("side") or r.get("trend_direction") or "long").lower()
-            if "long" in side and ema20_gt >= 0.5 and slope > 0:
-                final.append(r)
-            elif "short" in side and ema20_gt < 0.5 and slope < 0:
-                final.append(r)
-    else:
-        final = list(after_rsi)
+            breakout = _get_float(r, "breakout_confirmation", 0.0)
+            if "long" in side and breakout > 0:
+                after_breakout.append(r)
+            elif "short" in side and breakout < 0:
+                after_breakout.append(r)
+    n_breakout = len(after_breakout)
+
+    after_wick = after_breakout
+    if upper_wick_ratio_max is not None or lower_wick_ratio_max is not None:
+        after_wick = []
+        for r in after_breakout:
+            side = (r.get("side") or r.get("trend_direction") or "long").lower()
+            if upper_wick_ratio_max is not None and "long" in side:
+                if _get_float(r, "upper_wick_ratio", 1.0) > upper_wick_ratio_max:
+                    continue
+            if lower_wick_ratio_max is not None and "short" in side:
+                if _get_float(r, "lower_wick_ratio", 1.0) > lower_wick_ratio_max:
+                    continue
+            after_wick.append(r)
+    n_wick = len(after_wick)
+
+    final = []
+    slope_min = ema50_slope_min if ema50_slope_min is not None else 0.0
+    for r in after_wick:
+        if not use_trend_filter:
+            final.append(r)
+            continue
+        ema20_gt = _get_float(r, "ema20_gt_ema50")
+        slope = _get_float(r, "ema50_slope")
+        side = (r.get("side") or r.get("trend_direction") or "long").lower()
+        if "long" in side and ema20_gt >= 0.5 and slope >= slope_min:
+            final.append(r)
+        elif "short" in side and ema20_gt < 0.5 and slope <= -slope_min:
+            final.append(r)
+    n_final = len(final)
+
     debug = {
         "total_candidates": total,
+        "after_regime_filter": n_regime,
         "after_ema_filter": len(after_ema),
         "after_volume_filter": len(after_vol),
         "after_rsi_filter": len(after_rsi),
-        "final_trades": len(final),
+        "after_momentum_filter": n_momentum,
+        "after_pullback_filter": n_pullback,
+        "after_breakout_filter": n_breakout,
+        "after_wick_filter": n_wick,
+        "after_trend_filter": n_final if use_trend_filter else n_wick,
+        "final_trades": n_final,
     }
     return final, debug
 
@@ -223,13 +330,32 @@ def run_parameter_scan(
     r_key: str = "R_return",
     r_cap: float = 20.0,
     use_trend_filter: bool = False,
+    *,
+    momentum_ratio_threshold: Optional[float] = None,
+    pullback_depth_min: Optional[float] = None,
+    pullback_depth_max: Optional[float] = None,
+    breakout_confirmation_required: bool = False,
+    upper_wick_ratio_max: Optional[float] = None,
+    lower_wick_ratio_max: Optional[float] = None,
+    ema50_slope_min: Optional[float] = None,
+    allowed_regimes: Optional[List[str]] = None,
 ) -> List[dict]:
-    """Run full grid; optional trend filter (long: ema20>ema50 and slope>0, short: opposite)."""
+    """Run full grid; optional trend and entry-quality filters."""
     results = []
     for ema_t in ema_values:
         for vol_t in volume_ratio_values:
             for rsi_t in rsi_values:
-                filtered = _filter_by_thresholds(rows, ema_t, vol_t, rsi_t, use_trend_filter=use_trend_filter)
+                filtered = _filter_by_thresholds(
+                    rows, ema_t, vol_t, rsi_t, use_trend_filter=use_trend_filter,
+                    momentum_ratio_threshold=momentum_ratio_threshold,
+                    pullback_depth_min=pullback_depth_min,
+                    pullback_depth_max=pullback_depth_max,
+                    breakout_confirmation_required=breakout_confirmation_required,
+                    upper_wick_ratio_max=upper_wick_ratio_max,
+                    lower_wick_ratio_max=lower_wick_ratio_max,
+                    ema50_slope_min=ema50_slope_min,
+                    allowed_regimes=allowed_regimes,
+                )
                 m = metrics_for_rows(filtered, r_key=r_key, r_cap=r_cap)
                 results.append({
                     "ema_distance_threshold": ema_t,
@@ -252,6 +378,15 @@ def run_parameter_scan_with_debug(
     r_key: str = "R_return",
     r_cap: float = 20.0,
     use_trend_filter: bool = False,
+    *,
+    momentum_ratio_threshold: Optional[float] = None,
+    pullback_depth_min: Optional[float] = None,
+    pullback_depth_max: Optional[float] = None,
+    breakout_confirmation_required: bool = False,
+    upper_wick_ratio_max: Optional[float] = None,
+    lower_wick_ratio_max: Optional[float] = None,
+    ema50_slope_min: Optional[float] = None,
+    allowed_regimes: Optional[List[str]] = None,
 ) -> tuple[List[dict], List[dict]]:
     """Run full grid and return (results, debug_rows). debug_rows for parameter_scan_debug.csv."""
     results = []
@@ -260,7 +395,15 @@ def run_parameter_scan_with_debug(
         for vol_t in volume_ratio_values:
             for rsi_t in rsi_values:
                 filtered, debug = _filter_by_thresholds_with_debug(
-                    rows, ema_t, vol_t, rsi_t, use_trend_filter=use_trend_filter
+                    rows, ema_t, vol_t, rsi_t, use_trend_filter=use_trend_filter,
+                    momentum_ratio_threshold=momentum_ratio_threshold,
+                    pullback_depth_min=pullback_depth_min,
+                    pullback_depth_max=pullback_depth_max,
+                    breakout_confirmation_required=breakout_confirmation_required,
+                    upper_wick_ratio_max=upper_wick_ratio_max,
+                    lower_wick_ratio_max=lower_wick_ratio_max,
+                    ema50_slope_min=ema50_slope_min,
+                    allowed_regimes=allowed_regimes,
                 )
                 m = metrics_for_rows(filtered, r_key=r_key, r_cap=r_cap)
                 results.append({
@@ -278,12 +421,20 @@ def run_parameter_scan_with_debug(
                     "volume_ratio_threshold": vol_t,
                     "rsi_threshold": rsi_t,
                     "total_candidates": debug["total_candidates"],
+                    "after_regime_filter": debug["after_regime_filter"],
                     "after_ema_filter": debug["after_ema_filter"],
                     "after_volume_filter": debug["after_volume_filter"],
                     "after_rsi_filter": debug["after_rsi_filter"],
+                    "after_momentum_filter": debug["after_momentum_filter"],
+                    "after_pullback_filter": debug["after_pullback_filter"],
+                    "after_breakout_filter": debug["after_breakout_filter"],
+                    "after_trend_filter": debug["after_trend_filter"],
                     "final_trades": debug["final_trades"],
                 })
     return results, debug_rows
+
+
+REGIMES_ALL = ["TRENDING_UP", "TRENDING_DOWN", "RANGING", "CHAOTIC"]
 
 
 def run_parameter_scan_by_regime(
@@ -294,15 +445,29 @@ def run_parameter_scan_by_regime(
     r_key: str = "R_return",
     r_cap: float = 20.0,
     use_trend_filter: bool = False,
+    *,
+    momentum_ratio_threshold: Optional[float] = None,
+    pullback_depth_min: Optional[float] = None,
+    pullback_depth_max: Optional[float] = None,
+    breakout_confirmation_required: bool = False,
+    upper_wick_ratio_max: Optional[float] = None,
+    lower_wick_ratio_max: Optional[float] = None,
+    ema50_slope_min: Optional[float] = None,
 ) -> dict[str, List[dict]]:
-    """Run scan per regime (TRENDING_UP, TRENDING_DOWN, RANGING). Returns {regime: results}."""
-    regimes = ["TRENDING_UP", "TRENDING_DOWN", "RANGING"]
+    """Run scan per regime (TRENDING_UP, TRENDING_DOWN, RANGING, CHAOTIC). Normalizes RANGE -> RANGING. Returns {regime: results}."""
     out = {}
-    for reg in regimes:
-        subset = [r for r in rows if (r.get("regime") or "").upper() == reg]
+    for reg in REGIMES_ALL:
+        subset = [r for r in rows if _normalize_regime(r.get("regime") or "") == reg]
         out[reg] = run_parameter_scan(
             subset, ema_values, volume_ratio_values, rsi_values,
             r_key=r_key, r_cap=r_cap, use_trend_filter=use_trend_filter,
+            momentum_ratio_threshold=momentum_ratio_threshold,
+            pullback_depth_min=pullback_depth_min,
+            pullback_depth_max=pullback_depth_max,
+            breakout_confirmation_required=breakout_confirmation_required,
+            upper_wick_ratio_max=upper_wick_ratio_max,
+            lower_wick_ratio_max=lower_wick_ratio_max,
+            ema50_slope_min=ema50_slope_min,
         )
     return out
 
@@ -313,7 +478,7 @@ SANITY_PROFIT_FACTOR_MAX = 10.0
 SANITY_MIN_TRADES = 30
 # Stable region recommendation (edge recovery: broad stable region)
 STABLE_MIN_TRADES = 200
-STABLE_MIN_PROFIT_FACTOR = 1.02
+STABLE_MIN_PROFIT_FACTOR = 1.05
 STABLE_MIN_AVG_R = 0.0
 # Heatmap: only rows with enough trades and valid
 HEATMAP_MIN_TRADES = 200

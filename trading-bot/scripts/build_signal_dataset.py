@@ -33,7 +33,9 @@ from risk.risk_manager import RiskManager, compute_stop_loss, compute_quantity
 from strategy.approval_engine import ApprovalContext, score as approval_score
 from strategy.feature_extractor import extract_feature_values
 from strategy.filters.market_regime import MarketRegimeFilter
-from strategy.mtf_ema_pullback import evaluate_candidate
+from strategy.mtf_ema_pullback import evaluate_candidate as evaluate_mtf_pullback
+from strategy.vol_breakout import evaluate_vol_breakout
+from strategy.mean_reversion import evaluate_mean_reversion
 from storage.candle_loader import load_1m_from_db, load_1m_last_n
 from storage.database import init_db
 from storage.models import CandidateSignalModel
@@ -153,6 +155,7 @@ def build_dataset(
         else None
     )
     risk_mgr = RiskManager(risk_settings)
+    strategy_mode = (cfg.get("strategy_mode") or "ema_pullback").lower()
 
     need_bars = 15 * N_15M          # minimum for 15m
     outcome_bars = 31               # need 30 bars after for future_r_30
@@ -186,18 +189,39 @@ def build_dataset(
             if not regime_result.allow_trading:
                 continue
 
-        candidate = evaluate_candidate(candles_15m, candles_5m, window_1m, strat_settings, symbol)
-        if candidate is None:
-            continue
+        # Feature 추출 (전략 공통)
+        features = extract_feature_values(window_1m, candles_5m, strat_settings, candles_15m=candles_15m)
 
-        if regime_result is not None:
-            if candidate.direction == Direction.LONG and not regime_result.can_long:
+        # Strategy별 candidate 생성
+        if strategy_mode == "vol_breakout":
+            regime_name = regime_result.regime.value if regime_result is not None else None
+            record = evaluate_vol_breakout(window_1m, candles_5m, candles_15m, features, regime_name, strat_settings, symbol)
+            if record is None:
                 continue
-            if candidate.direction == Direction.SHORT and not regime_result.can_short:
+            direction = record.trend_direction
+            entry_price = record.entry_price
+            candidate = None
+        elif strategy_mode == "mean_reversion":
+            regime_name = regime_result.regime.value if regime_result is not None else None
+            record = evaluate_mean_reversion(window_1m, candles_5m, candles_15m, features, regime_name, strat_settings, symbol)
+            if record is None:
                 continue
+            direction = record.trend_direction
+            entry_price = record.entry_price
+            candidate = None
+        else:
+            candidate = evaluate_mtf_pullback(candles_15m, candles_5m, window_1m, strat_settings, symbol)
+            if candidate is None:
+                continue
+            if regime_result is not None:
+                if candidate.direction == Direction.LONG and not regime_result.can_long:
+                    continue
+                if candidate.direction == Direction.SHORT and not regime_result.can_short:
+                    continue
+            direction = candidate.direction
+            entry_price = bar.close
 
-        entry_price = bar.close
-        stop_loss = compute_stop_loss(entry_price, candidate.direction, window_1m, risk_settings)
+        stop_loss = compute_stop_loss(entry_price, direction, window_1m, risk_settings)
 
         # stop_loss sanity guard
         if stop_loss is None or math.isclose(entry_price, stop_loss, rel_tol=0.0, abs_tol=1e-12):
@@ -211,19 +235,28 @@ def build_dataset(
             stop_loss=stop_loss,
             regime_result=regime_result,
         )
+        # vol_breakout / mean_reversion 도 approval_engine 경유 (후속 필터/점수 동일 사용)
+        if strategy_mode in ("vol_breakout", "mean_reversion"):
+            from core.models import Signal
+
+            # ApprovalEngine은 Signal을 기대하므로, direction만 담은 더미 Signal 생성
+            reason = "vol_breakout" if strategy_mode == "vol_breakout" else "mean_reversion"
+            candidate_like = Signal(direction=direction, reason_code=reason, timeframe=None, symbol=symbol)
+        else:
+            candidate_like = candidate
+
         result = approval_score(
-            candidate, ctx, approval_settings, strat_settings, risk_settings,
+            candidate_like, ctx, approval_settings, strat_settings, risk_settings,
         )
         regime_str = regime_result.regime.value if regime_result is not None else "UNKNOWN"
-        features = extract_feature_values(window_1m, candles_5m, strat_settings, candles_15m=candles_15m)
 
         # Trend filter: LONG only if ema20>ema50 and ema50_slope>0, SHORT only if opposite
         if get_use_trend_filter(cfg):
             bias = features.get("trend_bias", 0.0) or 0.0
-            if candidate.direction == Direction.LONG and bias < 0.5:
+            if direction == Direction.LONG and bias < 0.5:
                 count_skipped += 1
                 continue
-            if candidate.direction == Direction.SHORT and bias > -0.5:
+            if direction == Direction.SHORT and bias > -0.5:
                 count_skipped += 1
                 continue
 
@@ -238,7 +271,7 @@ def build_dataset(
                 blocked_reason = check.reason_code or "risk"
                 approval_score_val = result.total_score
             else:
-                qty = compute_quantity(10000.0, entry_price, stop_loss, candidate.direction, risk_settings)
+                qty = compute_quantity(10000.0, entry_price, stop_loss, direction, risk_settings)
                 if qty <= 0:
                     trade_outcome = "blocked"
                     blocked_reason = "qty<=0"
@@ -252,7 +285,7 @@ def build_dataset(
             timestamp=bar.timestamp,
             entry_price=entry_price,
             regime=regime_str,
-            trend_direction=candidate.direction,
+            trend_direction=direction,
             approval_score=approval_score_val,
             feature_values=features,
             trade_outcome=trade_outcome,

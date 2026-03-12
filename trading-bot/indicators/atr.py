@@ -1,7 +1,7 @@
 """
 Average True Range. Input: list of Candle or (high, low, close) arrays.
 """
-from typing import List, Union
+from typing import List, Optional, Union
 
 from core.models import Candle
 
@@ -14,7 +14,7 @@ def true_range(high: float, low: float, prev_close: float) -> float:
     return max(high - low, abs(high - prev_close), abs(low - prev_close))
 
 
-def atr(candles: List[Candle], period: int = 14) -> float | None:
+def atr(candles: List[Candle], period: int = 14) -> Optional[float]:
     """
     ATR of the last candle. Uses typical (high, low, close).
     Returns None if len(candles) < period + 1.

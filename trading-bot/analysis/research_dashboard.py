@@ -297,6 +297,56 @@ def write_html_index(out_dir: Path, chart_paths: list[Path], run_id: str = "") -
     return index_path
 
 
+def plot_filter_survival_funnel(run_dir: Path, out_dir: Path, plt) -> list[Path]:
+    """Filter survival funnel from parameter_scan_debug.csv: one representative row, bar per stage."""
+    saved = []
+    p = Path(run_dir) / "parameter_scan_debug.csv"
+    if not p.exists():
+        return saved
+    rows = _load_csv(p)
+    if not rows:
+        return saved
+    # Use row with largest final_trades as representative
+    row = max(rows, key=lambda r: int(r.get("final_trades", 0) or 0))
+    stages = [
+        "total_candidates", "after_regime_filter", "after_ema_filter", "after_volume_filter",
+        "after_rsi_filter", "after_momentum_filter", "after_pullback_filter", "after_breakout_filter",
+        "after_trend_filter", "final_trades",
+    ]
+    labels = [
+        "Total", "Regime", "EMA", "Volume", "RSI", "Momentum", "Pullback", "Breakout", "Trend", "Final",
+    ]
+    counts = []
+    for s in stages:
+        if s in row:
+            try:
+                counts.append(int(float(row[s])))
+            except (ValueError, TypeError):
+                counts.append(0)
+        else:
+            counts.append(0)
+    # Trim to stages that exist
+    present = [i for i, s in enumerate(stages) if s in row]
+    if not present:
+        return saved
+    stages = [stages[i] for i in present]
+    labels = [labels[i] for i in present]
+    counts = [counts[i] for i in present]
+    fig, ax = plt.subplots(figsize=(10, 5))
+    x = range(len(labels))
+    bars = ax.bar(x, counts, color="steelblue", edgecolor="navy")
+    ax.set_xticks(x)
+    ax.set_xticklabels(labels, rotation=45, ha="right")
+    ax.set_ylabel("Candidates")
+    ax.set_title("Filter survival funnel (representative parameter combination)")
+    fig.tight_layout()
+    path = out_dir / "dashboard_filter_survival_funnel.png"
+    fig.savefig(path, dpi=120, bbox_inches="tight")
+    plt.close(fig)
+    saved.append(path)
+    return saved
+
+
 def generate_all(run_dir: Path, out_dir: Path | None = None) -> list[Path]:
     """Generate all dashboard charts + HTML. run_dir = e.g. analysis/output/202603081221 (CSV 있는 폴더)."""
     run_dir = Path(run_dir)
@@ -311,6 +361,7 @@ def generate_all(run_dir: Path, out_dir: Path | None = None) -> list[Path]:
     all_saved.extend(plot_regime_comparison(run_dir, out_dir, plt))
     all_saved.extend(plot_parameter_scan_top(run_dir, out_dir, plt))
     all_saved.extend(plot_parameter_scan_heatmap_simple(run_dir, out_dir, plt))
+    all_saved.extend(plot_filter_survival_funnel(run_dir, out_dir, plt))
     if all_saved:
         write_html_index(out_dir, all_saved, run_dir.name)
     return all_saved

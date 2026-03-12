@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 # Stable region 기준: edge 복구 단계 — 넓은 안정 구간, 주변에서도 무너지지 않을 것
 DEFAULT_MIN_AVG_R = 0.0
-DEFAULT_MIN_PROFIT_FACTOR = 1.02
+DEFAULT_MIN_PROFIT_FACTOR = 1.05  # plan: minimum 1.05
 DEFAULT_MAX_DRAWDOWN = 2.0  # 이 값 이하만 허용 (클수록 낙폭 큼)
 DEFAULT_MIN_TRADES = 200
 
@@ -112,6 +112,65 @@ def filter_stable_region(
     return stable
 
 
+def _results_lookup(results: list) -> dict:
+    """Build (ema, vol, rsi) -> row lookup. Keys rounded for float match."""
+    lookup = {}
+    for r in results:
+        ema = r.get("ema_distance_threshold")
+        vol = r.get("volume_ratio_threshold")
+        rsi = r.get("rsi_threshold")
+        if ema is None or vol is None or rsi is None:
+            continue
+        key = (round(float(ema), 6), round(float(vol), 2), float(rsi))
+        lookup[key] = r
+    return lookup
+
+
+def count_neighbors_positive(results: list, ema_rec: float, vol_rec: float, rsi_rec: float) -> tuple:
+    """
+    Count how many grid neighbors of (ema_rec, vol_rec, rsi_rec) have avg_R > 0.
+    Neighbor = same grid, adjacent in one dimension (ema/vol/rsi unique sorted values).
+    Returns (count_positive, total_neighbors_found).
+    """
+    if not results:
+        return 0, 0
+    ema_vals = sorted({round(float(r.get("ema_distance_threshold") or 0), 6) for r in results if r.get("ema_distance_threshold") is not None})
+    vol_vals = sorted({round(float(r.get("volume_ratio_threshold") or 0), 2) for r in results if r.get("volume_ratio_threshold") is not None})
+    rsi_vals = sorted({float(r.get("rsi_threshold") or 0) for r in results if r.get("rsi_threshold") is not None})
+    if not ema_vals or not vol_vals or not rsi_vals:
+        return 0, 0
+    def closest_idx(vals, x):
+        i = 0
+        for i, v in enumerate(vals):
+            if v >= x:
+                break
+        if i >= len(vals):
+            i = len(vals) - 1
+        if i > 0 and abs(vals[i - 1] - x) < abs(vals[i] - x):
+            i = i - 1
+        return i
+    ei = closest_idx(ema_vals, ema_rec)
+    vi = closest_idx(vol_vals, vol_rec)
+    ri = closest_idx(rsi_vals, rsi_rec)
+    lookup = _results_lookup(results)
+    count_pos = 0
+    total = 0
+    for di in (-1, 0, 1):
+        for dj in (-1, 0, 1):
+            for dk in (-1, 0, 1):
+                if di == dj == dk == 0:
+                    continue
+                i, j, k = ei + di, vi + dj, ri + dk
+                if 0 <= i < len(ema_vals) and 0 <= j < len(vol_vals) and 0 <= k < len(rsi_vals):
+                    key = (ema_vals[i], vol_vals[j], rsi_vals[k])
+                    row = lookup.get(key)
+                    if row is not None:
+                        total += 1
+                        if (row.get("avg_R") or 0) > 0:
+                            count_pos += 1
+    return count_pos, total
+
+
 def center_of_stable(stable: list) -> dict:
     """Stable region 내 조합들에 대해 ema/vol/rsi 의 중앙값(median) 계산 → config에 넣을 제안값."""
     if not stable:
@@ -152,6 +211,46 @@ def center_of_stable(stable: list) -> dict:
     }
 
 
+def _find_best_regime(regime_results: dict, ema_rec: float, vol_rec: float, rsi_rec: float) -> str:
+    """Given regime_results[regime] = list of result dicts, find which regime has best avg_R for closest config."""
+    best_regime = ""
+    best_avg_r = None
+    for reg, rows in (regime_results or {}).items():
+        lookup = _results_lookup(rows)
+        # Closest key
+        if not rows:
+            continue
+        ema_vals = sorted({round(float(r.get("ema_distance_threshold") or 0), 6) for r in rows})
+        vol_vals = sorted({round(float(r.get("volume_ratio_threshold") or 0), 2) for r in rows})
+        rsi_vals = sorted({float(r.get("rsi_threshold") or 0) for r in rows})
+        if not ema_vals or not vol_vals or not rsi_vals:
+            continue
+        def closest(vals, x):
+            i = min(range(len(vals)), key=lambda i: abs(vals[i] - x))
+            return vals[i]
+        key = (closest(ema_vals, ema_rec), closest(vol_vals, vol_rec), closest(rsi_vals, rsi_rec))
+        row = lookup.get(key)
+        if row is not None:
+            ar = row.get("avg_R")
+            if ar is not None and (best_avg_r is None or ar > best_avg_r):
+                best_avg_r = ar
+                best_regime = reg
+    return best_regime or ""
+
+
+def _find_best_horizon(edge_decay_rows: list, ema_rec: float, vol_rec: float, rsi_rec: float) -> int:
+    """From edge_decay_summary rows, find best_horizon for the closest parameter row."""
+    if not edge_decay_rows:
+        return 0
+    def dist(r):
+        a = (float(r.get("ema_distance_threshold") or 0) - ema_rec) ** 2
+        b = (float(r.get("volume_ratio_threshold") or 0) - vol_rec) ** 2
+        c = (float(r.get("rsi_threshold") or 0) - rsi_rec) ** 2
+        return a + b + c
+    row = min(edge_decay_rows, key=dist)
+    return int(row.get("best_horizon") or 0)
+
+
 def run(
     results: list,
     min_avg_r: float = DEFAULT_MIN_AVG_R,
@@ -159,6 +258,8 @@ def run(
     max_drawdown: float = DEFAULT_MAX_DRAWDOWN,
     min_trades: int = DEFAULT_MIN_TRADES,
     only_valid_rows: bool = True,
+    regime_results: dict = None,
+    edge_decay_rows: list = None,
 ) -> dict:
     """Stable region 필터 → 중앙값 제안. 넓은 안정 구간(broad stable region) 선호. 반환: recommended config fragment + _stable_sample for explanation."""
     stable = filter_stable_region(
@@ -174,6 +275,24 @@ def run(
                        min_avg_r, min_profit_factor, max_drawdown, min_trades)
         return {}
     rec = center_of_stable(stable)
+    ema_rec = rec["strategy"]["ema_distance_threshold"]
+    vol_rec = rec["approval"]["volume_multiplier"]
+    rsi_rec = rec["strategy"]["rsi_long_min"]
+    # Neighbors: how many adjacent grid points have avg_R > 0
+    n_pos, n_tot = count_neighbors_positive(results, ema_rec, vol_rec, rsi_rec)
+    rec["_meta"]["neighbors_positive_count"] = n_pos
+    rec["_meta"]["neighbors_total"] = n_tot
+    rec["_meta"]["neighbors_positive"] = n_tot > 0 and n_pos == n_tot
+    # Optional: regime where this config performs best
+    if regime_results:
+        rec["_meta"]["regime_best"] = _find_best_regime(regime_results, ema_rec, vol_rec, rsi_rec)
+    else:
+        rec["_meta"]["regime_best"] = ""
+    # Optional: best holding horizon from edge_decay_summary
+    if edge_decay_rows:
+        rec["_meta"]["best_holding_horizon"] = _find_best_horizon(edge_decay_rows, ema_rec, vol_rec, rsi_rec)
+    else:
+        rec["_meta"]["best_holding_horizon"] = 0
     # Sample one row for explanation (median-like)
     mid = stable[len(stable) // 2]
     rec["_stable_sample"] = {
@@ -186,7 +305,7 @@ def run(
 
 
 def write_explanation(recommended: dict, out_path: Path, min_trades: int, min_pf: float, min_avg_r: float) -> None:
-    """recommended_config_explanation.txt: 왜 그 값이 선택됐는지, trades, avg_R, PF, stable region 범위."""
+    """recommended_config_explanation.txt: 왜 그 값이 선택됐는지, trades, avg_R, PF, stable region, regime, horizon, neighbors."""
     meta = recommended.get("_meta", {})
     sample = recommended.get("_stable_sample", {})
     lines = [
@@ -210,8 +329,19 @@ def write_explanation(recommended: dict, out_path: Path, min_trades: int, min_pf
         f"  - profit_factor: {sample.get('profit_factor')}",
         f"  - winrate %: {sample.get('winrate')}",
         "",
-        "이 값은 자동 적용이 아니라 검토 후 config.json에 반영하세요.",
     ]
+    if meta.get("neighbors_total") is not None:
+        n_pos = meta.get("neighbors_positive_count", 0)
+        n_tot = meta.get("neighbors_total", 0)
+        lines.append(f"이웃 조합: {n_pos}/{n_tot} 개 양수 (avg_R > 0)" + (" — 안정 구간" if n_tot and n_pos == n_tot else ""))
+        lines.append("")
+    if meta.get("regime_best"):
+        lines.append(f"레짐(최고 성과): {meta.get('regime_best')}")
+        lines.append("")
+    if meta.get("best_holding_horizon"):
+        lines.append(f"권장 홀딩 호라이즌(봉): {meta.get('best_holding_horizon')}")
+        lines.append("")
+    lines.append("이 값은 자동 적용이 아니라 검토 후 config.json에 반영하세요.")
     out_path.write_text("\n".join(lines), encoding="utf-8")
 
 

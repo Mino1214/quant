@@ -78,10 +78,139 @@ def load_1m_from_db(
                 r = dict(row)
                 ts = _parse_ts(r)
                 o, h, l_, c, v = _ohlcv(r)
+                # Optional extended fields (Binance-style schema 우선 지원)
+                qv = (
+                    r.get("quote_volume")
+                    or r.get("quoteVolume")
+                    or r.get("quoteVolumeUSDT")
+                    or 0
+                )
+                tc = r.get("trade_count") or r.get("n") or 0
+                tbv = (
+                    r.get("taker_buy_volume")
+                    or r.get("takerBuyBaseVolume")
+                    or r.get("taker_buy_base_volume")
+                    or 0
+                )
+                tbqv = (
+                    r.get("taker_buy_quote_volume")
+                    or r.get("takerBuyQuoteVolume")
+                    or r.get("taker_buy_quote_volume")
+                    or 0
+                )
                 candles.append(
                     Candle(
-                        open=o, high=h, low=l_, close=c, volume=v,
-                        timestamp=ts, timeframe=Timeframe.M1,
+                        open=o,
+                        high=h,
+                        low=l_,
+                        close=c,
+                        volume=v,
+                        timestamp=ts,
+                        timeframe=Timeframe.M1,
+                        quote_volume=float(qv) if qv is not None else 0.0,
+                        trade_count=int(tc) if tc is not None else 0,
+                        taker_buy_volume=float(tbv) if tbv is not None else 0.0,
+                        taker_buy_quote_volume=float(tbqv) if tbqv is not None else 0.0,
+                    )
+                )
+            except (KeyError, TypeError, ValueError):
+                continue
+    return candles
+
+
+def load_5m_from_db(
+    table: str = "btc5m",
+    start_ts: Optional[datetime] = None,
+    end_ts: Optional[datetime] = None,
+    limit: Optional[int] = None,
+    time_col: str = "openTime",
+    symbol: Optional[str] = None,
+) -> List[Candle]:
+    """Load 5m OHLCV from table."""
+    return _load_generic_from_db(table, start_ts, end_ts, limit, time_col, symbol, Timeframe.M5)
+
+
+def load_15m_from_db(
+    table: str = "btc15m",
+    start_ts: Optional[datetime] = None,
+    end_ts: Optional[datetime] = None,
+    limit: Optional[int] = None,
+    time_col: str = "openTime",
+    symbol: Optional[str] = None,
+) -> List[Candle]:
+    """Load 15m OHLCV from table."""
+    return _load_generic_from_db(table, start_ts, end_ts, limit, time_col, symbol, Timeframe.M15)
+
+
+def _load_generic_from_db(
+    table: str,
+    start_ts: Optional[datetime],
+    end_ts: Optional[datetime],
+    limit: Optional[int],
+    time_col: str,
+    symbol: Optional[str],
+    timeframe: Timeframe,
+) -> List[Candle]:
+    """Generic DB loader for OHLCV with given timeframe."""
+    conditions = []
+    params = {}
+    if symbol is not None:
+        conditions.append("`symbol` = :symbol")
+        params["symbol"] = symbol
+    if start_ts is not None:
+        conditions.append("`" + time_col + "` >= :start_ts")
+        params["start_ts"] = start_ts
+    if end_ts is not None:
+        conditions.append("`" + time_col + "` <= :end_ts")
+        params["end_ts"] = end_ts
+    where = (" WHERE " + " AND ".join(conditions)) if conditions else ""
+    limit_clause = f" LIMIT {int(limit)}" if limit else ""
+    sql = f"SELECT * FROM `{table}` {where} ORDER BY `{time_col}` ASC {limit_clause}"
+    candles: List[Candle] = []
+    if time_col in ("openTime", "open_time"):
+        if "start_ts" in params:
+            params["start_ts"] = int(params["start_ts"].timestamp() * 1000)
+        if "end_ts" in params:
+            params["end_ts"] = int(params["end_ts"].timestamp() * 1000)
+    with engine.connect() as conn:
+        result = conn.execute(text(sql), params)
+        for row in result.mappings():
+            try:
+                r = dict(row)
+                ts = _parse_ts(r)
+                o, h, l_, c, v = _ohlcv(r)
+                qv = (
+                    r.get("quote_volume")
+                    or r.get("quoteVolume")
+                    or r.get("quoteVolumeUSDT")
+                    or 0
+                )
+                tc = r.get("trade_count") or r.get("n") or 0
+                tbv = (
+                    r.get("taker_buy_volume")
+                    or r.get("takerBuyBaseVolume")
+                    or r.get("taker_buy_base_volume")
+                    or 0
+                )
+                tbqv = (
+                    r.get("taker_buy_quote_volume")
+                    or r.get("takerBuyQuoteVolume")
+                    or r.get("taker_buy_quote_volume")
+                    or 0
+                )
+                candles.append(
+                    Candle(
+                        open=o,
+                        high=h,
+                        low=l_,
+                        close=c,
+                        volume=v,
+                        timestamp=ts,
+                        timeframe=timeframe,
+                        quote_volume=float(qv) if qv is not None else 0.0,
+                        trade_count=int(tc) if tc is not None else 0,
+                        taker_buy_volume=float(tbv) if tbv is not None else 0.0,
+                        taker_buy_quote_volume=float(tbqv) if tbqv is not None else 0.0,
                     )
                 )
             except (KeyError, TypeError, ValueError):
@@ -111,8 +240,39 @@ def _load_last_n(
             r = dict(row)
             ts = _parse_ts(r)
             o, h, l_, c, v = _ohlcv(r)
+            qv = (
+                r.get("quote_volume")
+                or r.get("quoteVolume")
+                or r.get("quoteVolumeUSDT")
+                or 0
+            )
+            tc = r.get("trade_count") or r.get("n") or 0
+            tbv = (
+                r.get("taker_buy_volume")
+                or r.get("takerBuyBaseVolume")
+                or r.get("taker_buy_base_volume")
+                or 0
+            )
+            tbqv = (
+                r.get("taker_buy_quote_volume")
+                or r.get("takerBuyQuoteVolume")
+                or r.get("taker_buy_quote_volume")
+                or 0
+            )
             candles.append(
-                Candle(open=o, high=h, low=l_, close=c, volume=v, timestamp=ts, timeframe=timeframe)
+                Candle(
+                    open=o,
+                    high=h,
+                    low=l_,
+                    close=c,
+                    volume=v,
+                    timestamp=ts,
+                    timeframe=timeframe,
+                    quote_volume=float(qv) if qv is not None else 0.0,
+                    trade_count=int(tc) if tc is not None else 0,
+                    taker_buy_volume=float(tbv) if tbv is not None else 0.0,
+                    taker_buy_quote_volume=float(tbqv) if tbqv is not None else 0.0,
+                )
             )
         except (KeyError, TypeError, ValueError):
             continue

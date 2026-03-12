@@ -1,0 +1,11 @@
+Signal ranking summary
+==================================================
+Score = momentum_ratio*0.25 + body_to_range_ratio*0.15 + (1-close_near_high)*0.15 + volume_zscore*0.10
+      + ema50_slope*0.10 + atr_ratio_1m_5m*0.10 + breakout_pressure*0.10 - upper_wick_ratio*0.05
+  atr_ratio_1m_5m = atr_1m/atr_5m,  breakout_pressure = 1 - dist_from_recent_high_pct/10
+
+top_100%: n=633 trades=633 winrate=42.2% avg_R=-0.1245 PF=0.91
+top_50%: n=316 trades=316 winrate=39.9% avg_R=-0.2935 PF=0.81
+top_30%: n=189 trades=189 winrate=39.2% avg_R=-0.4961 PF=0.72
+top_20%: n=126 trades=126 winrate=38.1% avg_R=-0.7100 PF=0.62
+top_10%: n=63 trades=63 winrate=36.5% avg_R=-0.6854 PF=0.62

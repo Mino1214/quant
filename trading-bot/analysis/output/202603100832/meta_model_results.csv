@@ -1,0 +1,5 @@
+model,accuracy,mse,target
+logistic_regression,0.5,,binary
+random_forest,0.5,,binary
+gradient_boosting,0.4524,,binary
+random_forest_regressor,,35.576689,expected_R

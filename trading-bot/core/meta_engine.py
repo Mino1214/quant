@@ -10,6 +10,9 @@ STRATEGY_REGIMES: Dict[str, List[str]] = {
     "trend_pullback": ["TRENDING_UP", "TRENDING_DOWN"],
     "range_mean_reversion": ["RANGING"],
     "volatility_expansion": ["CHAOTIC", "TRENDING_UP", "TRENDING_DOWN"],
+    # 연구 기반 MTF 추세 눌림 전략 (base/strict)
+    "mtf_trend_pullback_base": ["TRENDING_UP"],
+    "mtf_trend_pullback_strict": ["TRENDING_UP"],
 }
 
 WEIGHTS = {"profit_factor": 0.4, "avg_R": 0.3, "stability_score": 0.2, "drawdown": -0.1}
@@ -48,6 +51,12 @@ def get_strategy_evaluate(strategy_id: str):
     if strategy_id == "trend_pullback":
         from strategy.strategies.trend_pullback import evaluate
         return evaluate
+    if strategy_id == "mtf_trend_pullback_base":
+        from strategy.strategies.mtf_trend_pullback_research import evaluate_base
+        return evaluate_base
+    if strategy_id == "mtf_trend_pullback_strict":
+        from strategy.strategies.mtf_trend_pullback_research import evaluate_strict
+        return evaluate_strict
     if strategy_id == "trend_breakout":
         from strategy.strategies.trend_breakout import evaluate
         return evaluate

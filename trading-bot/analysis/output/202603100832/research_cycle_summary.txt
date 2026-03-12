@@ -1,0 +1,19 @@
+============================================================
+Research cycle summary (feature engineering)
+============================================================
+Run: 202603100832
+
+New features in dataset:
+  atr_ratio = atr_5 / atr_50 (5m)
+  distance_from_high_20
+  candle_strength = body / range
+  close_position_in_candle = (close-low)/(high-low)
+  volume_spike = volume / volume_ma20
+
+Pipeline: parameter scan → entry quality → signal ranking → meta labeling
+
+--- Goal: top 10% profit factor > 1.3 ---
+  Current run top_10%% PF: 0.6616995724197796 (goal: >= 1.3)
+
+Outputs in this run: baseline_*.csv, parameter_scan_results*.csv, entry_quality_*.csv,
+signal_ranking_results.csv, ranking_summary.txt, meta_model_*.csv, etc.

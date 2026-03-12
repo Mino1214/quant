@@ -1,0 +1,100 @@
+============================================================
+리서치 파이프라인 요약 최종본
+============================================================
+Run: 202603100832  |  소요 시간: 14초
+
+------------------------------------------------------------
+Phase 1 — Baseline
+------------------------------------------------------------
+Baseline strategy — performance summary
+==================================================
+(candidate_signals 테이블 기준)
+
+Total trades:     109
+Win rate:         45.87%
+Avg R:            -0.2560
+Profit factor:   0.8409
+Max drawdown:    68.98
+Sharpe (R):      -0.5737
+
+Total R:          -27.90  (시그널 기준 — 달러 잔고/Net PnL은 backtest 모드에서만 의미 있음)
+
+------------------------------------------------------------
+Phase 2 — Regime 진단
+------------------------------------------------------------
+Regime diagnostics
+==================================================
+
+TRENDING_UP
+  average_profit_factor: 0.7
+  best_profit_factor:    2.3
+  average_avg_R:         -0.6415
+  best_avg_R:            1.1163
+  trade_count:           3068
+  best params: ema=0.0005, vol=1.4, rsi=55.0
+
+TRENDING_DOWN
+  average_profit_factor: 1.01
+  best_profit_factor:    1.69
+  average_avg_R:         -0.0212
+  best_avg_R:            0.8553
+  trade_count:           3712
+  best params: ema=0.0003, vol=0.8, rsi=55.0
+
+RANGING
+  average_profit_factor: 0.0
+  best_profit_factor:    0.0
+  average_avg_R:         0.0
+  best_avg_R:            0.0
+  trade_count:           0
+  best params: ema=0.0001, vol=0.8, rsi=45.0
+
+CHAOTIC
+  average_profit_factor: 0.0
+  best_profit_factor:    0.0
+  average_avg_R:         0.0
+  best_avg_R:            0.0
+  trade_count:           0
+  best params: ema=0.0001, vol=0.8, rsi=45.0
+
+------------------------------------------------------------
+Phase 4 — Entry quality
+------------------------------------------------------------
+momentum_ratio_threshold,pullback_depth_min,pullback_depth_max,upper_wick_ratio_max,lower_wick_ratio_max,breakout_confirmation_required,trades,winrate,avg_R,profit_factor,max_drawdown
+0.9,,,,,False,18,50.0,0.8731576699681862,1.8443724238742363,9.840967612434875
+0.9,,,,,True,12,50.0,1.3776895090993102,2.077205684033844,9.840967612434875
+0.9,,,,0.5,False,18,50.0,0.8731576699681862,1.8443724238742363,9.840967612434875
+0.9,,,,0.5,True,12,50.0,1.3776895090993102,2.077205684033844,9.840967612434875
+0.9,,,,0.6,False,18,50.0,0.8731576699681862,1.8443724238742363,9.840967612434875
+0.9,,,,0.6,True,12,50.0,1.3776895090993102,2.077205684033844,9.840967612434875
+0.9,,,,0.7,False,18,50.0,0.8731576699681862,1.8443724238742363,9.840967612434875
+
+------------------------------------------------------------
+Phase 5 — Signal ranking
+------------------------------------------------------------
+Signal ranking summary
+==================================================
+Score = momentum_ratio*0.25 + body_to_range_ratio*0.15 + (1-close_near_high)*0.15 + volume_zscore*0.10
+      + ema50_slope*0.10 + atr_ratio_1m_5m*0.10 + breakout_pressure*0.10 - upper_wick_ratio*0.05
+  atr_ratio_1m_5m = atr_1m/atr_5m,  breakout_pressure = 1 - dist_from_recent_high_pct/10
+
+top_100%: n=209 trades=209 winrate=45.0% avg_R=-0.1204 PF=0.92
+top_50%: n=104 trades=104 winrate=40.4% avg_R=-0.2842 PF=0.85
+top_30%: n=62 trades=62 winrate=40.3% avg_R=-0.4564 PF=0.75
+top_20%: n=41 trades=41 winrate=39.0% avg_R=-0.8115 PF=0.60
+top_10%: n=20 trades=20 winrate=40.0% avg_R=-0.7906 PF=0.66
+
+------------------------------------------------------------
+Phase 6 — Meta labeling
+------------------------------------------------------------
+Meta labeling model summary
+==================================================
+Train size: 168, Test size: 42
+
+Binary (win) accuracy:
+  logistic_regression: 0.5000
+  random_forest: 0.5000
+  gradient_boosting: 0.4524
+
+Expected R regressor MSE (RF):
+  random_forest_regressor: MSE = 35.576689

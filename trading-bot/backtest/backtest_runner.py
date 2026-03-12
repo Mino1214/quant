@@ -1,21 +1,28 @@
 """
 Backtest runner: 1m candles in, same strategy/risk/paper broker, no duplicate signals per bar.
+5m/15m은 btc5m, btc15m 테이블에서 불러와 쓰면 됨 (호출 쪽에서 넘기면 사용).
 """
 import argparse
+import bisect
 import csv
 import logging
 import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
-from core.models import BlockedCandidateLog, Candle, CandidateSignalRecord, Direction, Timeframe, TradeRecord
-from config.loader import load_config, get_approval_settings, get_capital_allocation_settings, get_kelly_settings, get_leverage_settings, get_risk_settings, get_strategy_settings, get_regime_settings, get_use_trend_filter
-from strategy.mtf_ema_pullback import evaluate_candidate
+from core.models import ApprovalResult, BlockedCandidateLog, Candle, CandidateSignalRecord, Direction, Timeframe, TradeRecord
+from config.loader import load_config, load_baseline_profile, get_approval_settings, get_capital_allocation_settings, get_kelly_settings, get_leverage_settings, get_risk_settings, get_strategy_settings, get_regime_settings, get_use_trend_filter
+from strategy.base import StrategyContext
+# 연구 기반 MTF 추세 눌림 전략 (strict / base 둘 다 import, 아래에서 선택 호출)
+from strategy.strategies.mtf_trend_pullback_research import (
+    evaluate_strict,
+    evaluate_base,
+)
 from strategy.filters.market_regime import MarketRegimeFilter
 from strategy.approval_engine import ApprovalContext, score as approval_score
-from strategy.feature_extractor import extract_feature_values
+from strategy.feature_extractor import extract_feature_values, extract_feature_values_research_minimal
 from risk.risk_manager import RiskManager, compute_stop_loss, compute_quantity, ema_exit_triggered
 from execution.capital_allocator import get_position_size, get_total_open_risk_pct
 from execution.signal_quality_ranking import compute_signal_quality_score
@@ -100,11 +107,36 @@ def rolling_5m_15m(window_1m: List[Candle], n_bars: int = N_15M) -> tuple[List[C
     return candles_5m, candles_15m
 
 
+def _slice_5m_15m_from_db(
+    candles_5m_full: List[Candle],
+    candles_15m_full: List[Candle],
+    bar_timestamp: datetime,
+    n_bars: int = N_15M,
+) -> Tuple[List[Candle], List[Candle]]:
+    """
+    btc5m/btc15m에서 불러온 전체 시리즈에서, bar_timestamp 시점까지 공개된
+    마지막 n_bars개 5m/15m 봉만 잘라서 반환.
+    """
+    if not candles_5m_full or not candles_15m_full:
+        return [], []
+    ts_5m = [c.timestamp for c in candles_5m_full]
+    ts_15m = [c.timestamp for c in candles_15m_full]
+    j5 = bisect.bisect_right(ts_5m, bar_timestamp) - 1
+    j15 = bisect.bisect_right(ts_15m, bar_timestamp) - 1
+    if j5 < 0 or j15 < 0:
+        return [], []
+    start_5 = max(0, j5 - n_bars + 1)
+    start_15 = max(0, j15 - n_bars + 1)
+    return candles_5m_full[start_5 : j5 + 1], candles_15m_full[start_15 : j15 + 1]
+
+
 async def run_backtest(
     candles_1m: List[Candle],
     symbol: str = "BTCUSDT",
     config: Optional[dict] = None,
     verbose: bool = False,
+    candles_5m: Optional[List[Candle]] = None,
+    candles_15m: Optional[List[Candle]] = None,
 ) -> tuple[List[TradeRecord], float, List[CandidateSignalRecord]]:
     """
     백테스트 = 실전 봇과 동일 세팅·매매기법.
@@ -136,11 +168,19 @@ async def run_backtest(
         cnt_regime_block = cnt_no_signal = cnt_regime_dir = cnt_risk = cnt_qty = cnt_entries = 0
         score_0 = score_1 = score_2 = score_3 = 0
 
-    # 실전 엔진과 동일: config.json + 동일 5m/15m 집계(마지막 봉에 현재 1m 포함)
+    use_db_5m_15m = candles_5m is not None and candles_15m is not None
+    candles_5m_full = candles_5m  # DB에서 불러온 전체 (use_db일 때만 사용)
+    candles_15m_full = candles_15m
+
     for i in range(len(candles_1m)):
         bar = candles_1m[i]
         window_1m = candles_1m[: i + 1]
-        candles_5m, candles_15m = rolling_5m_15m(window_1m, n_bars=N_15M)
+        if use_db_5m_15m and candles_5m_full and candles_15m_full:
+            candles_5m, candles_15m = _slice_5m_15m_from_db(
+                candles_5m_full, candles_15m_full, bar.timestamp, n_bars=N_15M
+            )
+        else:
+            candles_5m, candles_15m = rolling_5m_15m(window_1m, n_bars=N_15M)
         if len(candles_5m) < 50 or len(candles_15m) < 55:
             continue
 
@@ -201,7 +241,16 @@ async def run_backtest(
                         score_3 += 1
                 continue
         # No position: candidate → approval → entry
-        candidate = evaluate_candidate(candles_15m, candles_5m, window_1m, strat_settings, symbol)
+        ctx = StrategyContext(
+            candles_15m=candles_15m,
+            candles_5m=candles_5m,
+            candles_1m=window_1m,
+            settings=strat_settings,
+            symbol=symbol,
+        )
+        # strict / base 중 어떤 버전을 쓸지 여기서 선택
+        # candidate = evaluate_base(ctx)
+        candidate = evaluate_strict(ctx)
         if candidate is None:
             if verbose:
                 cnt_no_signal += 1
@@ -222,38 +271,57 @@ async def run_backtest(
         stop_loss = compute_stop_loss(
             entry_price, candidate.direction, window_1m, risk_settings
         )
-        ctx = ApprovalContext(
-            candles_1m=window_1m,
-            candles_5m=candles_5m,
-            candles_15m=candles_15m,
-            entry_price=entry_price,
-            stop_loss=stop_loss,
-            regime_result=regime_result,
-        )
-        result = approval_score(
-            candidate, ctx, approval_settings, strat_settings, risk_settings,
-        )
         regime_str = regime_result.regime.value if regime_result is not None else "UNKNOWN"
-        features = extract_feature_values(window_1m, candles_5m, strat_settings, candles_15m=candles_15m)
-        if len(candles_15m) >= 50:
+        is_research = (candidate.reason_code or "").startswith("mtf_trend_pb_")
+
+        if is_research:
+            # 연구 전략 전용 경량 경로: approval 스킵, 경량 피처만, multi_tf/cross_market 스킵
+            result = ApprovalResult(
+                allowed=True,
+                total_score=5,
+                category_scores={},
+                blocked_reason=None,
+            )
+            features = extract_feature_values_research_minimal(
+                window_1m, candles_5m, strat_settings, candles_15m=candles_15m
+            )
+        else:
+            ctx = ApprovalContext(
+                candles_1m=window_1m,
+                candles_5m=candles_5m,
+                candles_15m=candles_15m,
+                entry_price=entry_price,
+                stop_loss=stop_loss,
+                regime_result=regime_result,
+            )
+            result = approval_score(
+                candidate, ctx, approval_settings, strat_settings, risk_settings,
+            )
+            result.allowed = True
+            result.blocked_reason = None
+            features = extract_feature_values(
+                window_1m, candles_5m, strat_settings, candles_15m=candles_15m
+            )
+            if len(candles_15m) >= 50:
+                try:
+                    from features.multi_tf_feature_builder import build_multi_tf_features
+                    multi_tf = build_multi_tf_features(
+                        window_1m, candles_5m, candles_15m,
+                        bar.timestamp, strat_settings,
+                    )
+                    features = {**features, **multi_tf}
+                except Exception:
+                    pass
             try:
-                from features.multi_tf_feature_builder import build_multi_tf_features
-                multi_tf = build_multi_tf_features(
-                    window_1m, candles_5m, candles_15m,
-                    bar.timestamp, strat_settings,
+                from features.cross_market_feature_builder import build_cross_market_features
+                features = build_cross_market_features(
+                    bar.timestamp, features, strat_settings, eth_candles=None,
                 )
-                features = {**features, **multi_tf}
             except Exception:
                 pass
-        try:
-            from features.cross_market_feature_builder import build_cross_market_features
-            features = build_cross_market_features(
-                bar.timestamp, features, strat_settings, eth_candles=None,
-            )
-        except Exception:
-            pass
-        # Trend filter: LONG only if ema20>ema50 and ema50_slope>0, SHORT only if opposite
-        if get_use_trend_filter(cfg):
+
+        # Trend filter (연구 전략은 이미 slope/RSI로 필터했으므로 스킵)
+        if not is_research and get_use_trend_filter(cfg):
             bias = float(features.get("trend_bias", 0) or 0)
             if candidate.direction == Direction.LONG and bias < 0.5:
                 continue
@@ -290,7 +358,8 @@ async def run_backtest(
             continue
 
         cap = capital_allocation_settings
-        use_allocator = cap is not None and getattr(cap, "enabled", False)
+        # EDA와 최대한 비슷하게 보기 위해, 신호 퀄리티 기반 자본 배분은 끈다.
+        use_allocator = False
         signal_quality_score = None
         allocated_risk_pct = None
         kelly_fraction = None
@@ -413,6 +482,7 @@ async def main_async() -> None:
     parser.add_argument("--limit", type=int, default=None, help="When --from-db: max rows from oldest (첫 봉부터 N개)")
     parser.add_argument("--bars", type=int, default=None, help="When --from-db: 기준(가장 최근 봉)으로부터 이전 N봉만 사용 (권장)")
     parser.add_argument("--symbol", type=str, default="BTCUSDT")
+    parser.add_argument("--profile", type=str, default="", choices=["", "baseline"], help="Use named config profile (e.g. baseline) instead of config.json")
     parser.add_argument("--verbose", "-v", action="store_true", help="0건일 때 막힌 이유 요약 출력")
     parser.add_argument("--export-candidates", type=str, default="", help="Export candidate signals to CSV for Signal Distribution Analysis")
     parser.add_argument("--run-analysis", action="store_true", help="Run Signal Distribution Analysis (uses --export-candidates path or default)")
@@ -440,7 +510,8 @@ async def main_async() -> None:
         logger.info("CSV format: timestamp,open,high,low,close,volume")
         return
 
-    trades, final_balance, candidate_signals = await run_backtest(candles, args.symbol, verbose=args.verbose)
+    config = load_baseline_profile() if args.profile == "baseline" else None
+    trades, final_balance, candidate_signals = await run_backtest(candles, args.symbol, config=config, verbose=args.verbose)
 
     # Signal Distribution Analysis: export and/or run analysis
     if args.export_candidates:

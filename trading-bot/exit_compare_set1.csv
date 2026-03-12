@@ -1,0 +1,2 @@
+exit_type,regime_threshold,timeout_bars,tp_pct,sl_pct,n_trades,win_rate_pct,mean_net_pct,mean_raw_pct,profit_factor,pf_net,tp1_rate_pct,exit_reasons
+old,0.0002,30,1.2,0.6,28,57.14,0.0802,0.1602,1.4175,1.4175,0.0,"{'tp': 2, 'timeout': 21, 'sl': 5}"

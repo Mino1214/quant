@@ -1,0 +1,5 @@
+exit_type,regime_threshold,timeout_bars,tp_pct,tp1_pct,sl_pct,n_trades,win_rate_pct,mean_net_pct,mean_raw_pct,profit_factor,pf_net,tp1_rate_pct,exit_reasons
+old,0.0002,30,1.2,,0.6,90,50.0,0.0555,0.1355,1.363,1.363,0.0,"{'tp': 7, 'timeout': 74, 'sl': 9}"
+partial,0.0002,30,,0.8,0.6,90,52.22,0.0572,0.1372,1.3943,1.3943,16.67,"{'tp1_then_timeout': 3, 'timeout': 67, 'tp1_then_runner': 12, 'sl': 8}"
+old,0.000285,30,1.2,,0.6,82,51.22,0.0633,0.1433,1.3984,1.3984,0.0,"{'tp': 7, 'timeout': 66, 'sl': 9}"
+partial,0.000285,30,,0.8,0.6,82,53.66,0.0652,0.1452,1.4336,1.4336,18.29,"{'tp1_then_timeout': 3, 'timeout': 59, 'tp1_then_runner': 12, 'sl': 8}"

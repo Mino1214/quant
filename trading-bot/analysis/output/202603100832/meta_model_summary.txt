@@ -1,0 +1,11 @@
+Meta labeling model summary
+==================================================
+Train size: 168, Test size: 42
+
+Binary (win) accuracy:
+  logistic_regression: 0.5000
+  random_forest: 0.5000
+  gradient_boosting: 0.4524
+
+Expected R regressor MSE (RF):
+  random_forest_regressor: MSE = 35.576689

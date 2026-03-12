@@ -1,0 +1,14 @@
+Baseline strategy — performance summary
+==================================================
+(full backtest)
+
+Total trades:     185
+Win rate:         22.70%
+Avg R:            -0.4017
+Profit factor:   0.0844
+Max drawdown:    3261.34
+Sharpe (R):      -9.5565
+
+Initial balance:  10000.00
+Final balance:    6738.66
+Net PnL:          -3261.34

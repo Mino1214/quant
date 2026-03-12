@@ -1,0 +1,89 @@
+{
+  "config": {
+    "symbol": "BTCUSDT",
+    "from_ts": "2024-01-01",
+    "to_ts": "2024-12-31",
+    "regime_threshold": 0.000285,
+    "exit_type": "old",
+    "tp_pct": 1.2,
+    "tp1_pct": 0.8,
+    "tp1_size": 0.5,
+    "sl_pct": 0.6,
+    "timeout_bars": 30,
+    "initial_capital": 1000.0,
+    "notional_fraction": 0.05,
+    "leverage": 2.0,
+    "fee_bps": 4.0
+  },
+  "total_trades": 421,
+  "win_rate_pct": 49.17,
+  "profit_factor": 1.2032,
+  "total_return_pct": 1.2263,
+  "final_equity": 1012.2631,
+  "initial_capital": 1000.0,
+  "max_drawdown_pct": -0.4322,
+  "avg_trade_net_pct": 0.029,
+  "max_consecutive_losses": 10,
+  "monthly_returns": {
+    "2024-01": {
+      "pnl_usdt": 2.6782,
+      "return_pct": 0.2678,
+      "n_trades": 33
+    },
+    "2024-02": {
+      "pnl_usdt": -1.8807,
+      "return_pct": -0.1876,
+      "n_trades": 32
+    },
+    "2024-03": {
+      "pnl_usdt": 6.5358,
+      "return_pct": 0.6531,
+      "n_trades": 50
+    },
+    "2024-04": {
+      "pnl_usdt": -1.3538,
+      "return_pct": -0.1344,
+      "n_trades": 37
+    },
+    "2024-05": {
+      "pnl_usdt": 0.2823,
+      "return_pct": 0.0281,
+      "n_trades": 33
+    },
+    "2024-06": {
+      "pnl_usdt": 1.4019,
+      "return_pct": 0.1393,
+      "n_trades": 20
+    },
+    "2024-07": {
+      "pnl_usdt": 3.2177,
+      "return_pct": 0.3193,
+      "n_trades": 36
+    },
+    "2024-08": {
+      "pnl_usdt": -0.2235,
+      "return_pct": -0.0221,
+      "n_trades": 31
+    },
+    "2024-09": {
+      "pnl_usdt": 1.9993,
+      "return_pct": 0.1978,
+      "n_trades": 34
+    },
+    "2024-10": {
+      "pnl_usdt": 0.6272,
+      "return_pct": 0.0619,
+      "n_trades": 30
+    },
+    "2024-11": {
+      "pnl_usdt": -0.8448,
+      "return_pct": -0.0834,
+      "n_trades": 51
+    },
+    "2024-12": {
+      "pnl_usdt": -0.1764,
+      "return_pct": -0.0174,
+      "n_trades": 34
+    }
+  }
+}

@@ -31,3 +31,4 @@ ml/models/*.json
 # Analysis output (optional)
 # analysis/output/*.png
 # analysis/output/*.csv
+eda_feature_outcome_sample.csv

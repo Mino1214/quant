@@ -5,7 +5,7 @@ Continuation 전략에 맞게 3개 조건 중 2개 이상 만족하면 TRENDING 
 """
 from dataclasses import dataclass
 from enum import Enum
-from typing import List
+from typing import List, Optional
 
 from core.models import Candle
 
@@ -37,13 +37,13 @@ class RegimeSettings:
     enabled: bool = True
     ema_slow_len: int = 50
     slope_lookback: int = 5
-    slope_threshold_pct: float = 0.02
+    slope_threshold_pct: float = 0.03
     adx_len: int = 14
-    adx_min: float = 14.0
+    adx_min: float = 18.0
     atr_len: int = 14
-    natr_min: float = 0.02
+    natr_min: float = 0.03
     natr_max: float = 1.20
-    score_threshold: int = 1  # 3개 중 이 개수 이상 만족 시 거래 허용 (2 권장, 진입 안 나오면 1로 테스트)
+    score_threshold: int = 2  # 3개 중 2개 이상 만족 시 거래 허용, 미만이면 RANGING
 
 
 @dataclass
@@ -53,14 +53,14 @@ class MarketRegimeResult:
     allow_trading: bool
     can_long: bool
     can_short: bool
-    blocked_reason: str | None
+    blocked_reason: Optional[str]
     adx: float
     natr: float
     slope_pct: float
     score: int = 0  # 0~3, 진단용
 
 
-def _ema50_slope_pct(candles: List[Candle], period: int, lookback: int) -> float | None:
+def _ema50_slope_pct(candles: List[Candle], period: int, lookback: int) -> Optional[float]:
     """(EMA50_now - EMA50_prev_n) / EMA50_now * 100."""
     if len(candles) < period + lookback:
         return None
@@ -76,7 +76,7 @@ def _ema50_slope_pct(candles: List[Candle], period: int, lookback: int) -> float
     return (ema_now - ema_prev) / ema_now * 100.0
 
 
-def _natr(candles: List[Candle], period: int) -> tuple[float | None, float | None]:
+def _natr(candles: List[Candle], period: int) -> tuple[Optional[float], Optional[float]]:
     """Returns (ATR, NATR) for last candle. NATR = ATR / close * 100."""
     if len(candles) < period + 1:
         return None, None

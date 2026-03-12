@@ -64,6 +64,7 @@ async def run_one_fold(
             "train_end": train_end,
             "test_start": test_start,
             "test_end": test_end,
+            "trades": 0,
             "profit_factor": 0.0,
             "avg_R": 0.0,
             "drawdown": 0.0,
@@ -71,10 +72,13 @@ async def run_one_fold(
             "strategy_name": strategy_name,
         }
 
-    trades, _, _ = await run_backtest(candles, symbol=symbol, config=None, verbose=False)
+    from config.loader import load_baseline_profile
+    config = load_baseline_profile()
+    trades, _, _ = await run_backtest(candles, symbol=symbol, config=config, verbose=False)
     # Only trades that closed in test window
     test_trades = [t for t in trades if test_start <= t.closed_at <= test_end]
     m = _metrics_from_trades(test_trades)
+    m["trades"] = len(test_trades)
     m["train_start"] = train_start
     m["train_end"] = train_end
     m["test_start"] = test_start
@@ -148,16 +152,66 @@ def default_folds() -> List[Tuple[datetime, datetime, datetime, datetime]]:
     ]
 
 
+def write_walk_forward_outputs(results: List[dict], output_dir: Path) -> None:
+    """Write walk_forward_results.csv, walk_forward_equity.png, walk_forward_summary.txt."""
+    import csv
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    csv_path = output_dir / "walk_forward_results.csv"
+    with open(csv_path, "w", newline="", encoding="utf-8") as f:
+        fieldnames = ["train_start", "train_end", "test_start", "test_end", "trades", "profit_factor", "avg_R", "drawdown", "stability_score", "strategy_name"]
+        w = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
+        w.writeheader()
+        for r in results:
+            row = {k: r.get(k) for k in fieldnames}
+            for key in ("train_start", "train_end", "test_start", "test_end"):
+                if hasattr(row.get(key), "isoformat"):
+                    row[key] = row[key].isoformat()
+            w.writerow(row)
+    logger.info("Wrote %s", csv_path)
+
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        fig, ax = plt.subplots()
+        labels = [f"{r['test_start'].date()}\n–\n{r['test_end'].date()}" for r in results]
+        x = range(len(results))
+        ax.bar([i - 0.2 for i in x], [r["avg_R"] for r in results], width=0.4, label="Avg R", color="steelblue")
+        ax.bar([i + 0.2 for i in x], [r["profit_factor"] for r in results], width=0.4, label="Profit factor", color="darkorange")
+        ax.set_xticks(x)
+        ax.set_xticklabels(labels, rotation=15, ha="right")
+        ax.set_ylabel("Value")
+        ax.set_title("Walk-forward: per-fold performance")
+        ax.legend()
+        ax.axhline(0, color="gray", linestyle="--")
+        fig.tight_layout()
+        fig.savefig(output_dir / "walk_forward_equity.png", dpi=100)
+        plt.close(fig)
+        logger.info("Wrote %s", output_dir / "walk_forward_equity.png")
+    except ImportError:
+        pass
+
+    lines = ["Walk-forward validation summary", "=" * 50]
+    for r in results:
+        lines.append(f"Test {r['test_start'].date()} – {r['test_end'].date()}: PF={r['profit_factor']:.2f} avg_R={r['avg_R']:.4f} drawdown={r['drawdown']:.2f} stability={r.get('stability_score', 0):.4f}")
+    (output_dir / "walk_forward_summary.txt").write_text("\n".join(lines), encoding="utf-8")
+    logger.info("Wrote %s", output_dir / "walk_forward_summary.txt")
+
+
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("--symbol", type=str, default="BTCUSDT")
     parser.add_argument("--table", type=str, default="btc1m")
+    parser.add_argument("--output-dir", type=str, default="analysis/output")
     parser.add_argument("--save-db", action="store_true")
     args = parser.parse_args()
     folds = default_folds()
     results = run_walk_forward(folds, symbol=args.symbol, table=args.table)
     for r in results:
         logger.info("Fold test %s–%s: profit_factor=%.2f avg_R=%.2f drawdown=%.2f", r["test_start"].date(), r["test_end"].date(), r["profit_factor"], r["avg_R"], r["drawdown"])
+    write_walk_forward_outputs(results, Path(args.output_dir))
     if args.save_db:
         save_walk_forward_results(results)
